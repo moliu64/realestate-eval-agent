@@ -1,3 +1,3 @@
-{"question":"某商铺年度稳定净收益60万元，资本化率5%，请评估价值并说明依据。","expected_values":["12000000"],"expected_sources":["02_income_approach.md"],"kind":"single"}
-{"question":"帮我评估一套100平方米二手住宅，有近期可比成交单价20000元/平方米；同时年租金净收益8万元，资本化率4%，请做多方法校核。","expected_values":["2000000"],"expected_sources":["01_market_comparison.md","02_income_approach.md"],"kind":"multi"}
+{"question":"某商铺年度稳定净收益60万元，资本化率5%，请评估价值并说明依据。","expected_values":["12000000"],"expected_sources":["估价方法_收益法.md"],"kind":"single"}
+{"question":"帮我评估一套100平方米二手住宅，有近期可比成交单价20000元/平方米；同时年租金净收益8万元，资本化率4%，请做多方法校核。","expected_values":["2000000"],"expected_sources":["估价方法_市场比较法.md","估价方法_收益法.md"],"kind":"multi"}
 {"question":"帮我评估一套100平方米二手住宅，但暂时没有可比成交、租金或成本资料。","expected_values":[],"expected_sources":[],"kind":"missing_data"}

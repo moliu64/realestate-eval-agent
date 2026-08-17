@@ -61,19 +61,19 @@ class WorkflowUnitTest(unittest.TestCase):
         state = {
             "current_method": "income",
             "params": {"income": {"net_income": 600000, "cap_rate": 0.05}},
-            "context": "[来源: 02_income_approach.md]\n收益法资料",
+            "context": "[来源: 估价方法_收益法.md]\n收益法资料",
         }
         result = compute_node(state)
         computation = result["computations"][0]
         self.assertEqual(computation["method"], "income")
         self.assertIn("12000000", computation["result"])
-        self.assertEqual(computation["source"], "02_income_approach.md")
+        self.assertEqual(computation["source"], "估价方法_收益法.md")
 
     def test_compute_missing_data(self):
         state = {
             "current_method": "income",
             "params": {"income": {"net_income": 600000}},
-            "context": "[来源: 02_income_approach.md]\n收益法资料",
+            "context": "[来源: 估价方法_收益法.md]\n收益法资料",
         }
         result = compute_node(state)
         computation = result["computations"][0]
@@ -104,8 +104,8 @@ class WorkflowUnitTest(unittest.TestCase):
 
     @patch("app.workflow.nodes.retrieve")
     def test_retrieve_separates_method_context_and_trend_sources(self, mock_retrieve):
-        method_doc = Document(page_content="市场比较法资料", metadata={"source": "01_market_comparison.md"})
-        trend_doc = Document(page_content="武汉房价走势", metadata={"source": "07_wuhan_market_trend.md"})
+        method_doc = Document(page_content="市场比较法资料", metadata={"source": "估价方法_市场比较法.md"})
+        trend_doc = Document(page_content="武汉房价走势", metadata={"source": "市场数据_武汉住宅价格指数.md"})
         mock_retrieve.side_effect = [[(method_doc, 0.9)], [(trend_doc, 0.95)]]
 
         result = retrieve_node({
@@ -113,21 +113,21 @@ class WorkflowUnitTest(unittest.TestCase):
             "question": "结合武汉房价走势和房龄影响给参考估值",
         })
 
-        self.assertIn("01_market_comparison.md", result["context"])
-        self.assertNotIn("07_wuhan_market_trend.md", result["context"])
-        self.assertEqual(result["trend_sources"], ["07_wuhan_market_trend.md"])
+        self.assertIn("估价方法_市场比较法.md", result["context"])
+        self.assertNotIn("市场数据_武汉住宅价格指数.md", result["context"])
+        self.assertEqual(result["trend_sources"], ["市场数据_武汉住宅价格指数.md"])
 
     def test_report_uses_separate_trend_sources(self):
         result = report_node({
             "question": "2015年建成、89㎡两房、光谷，结合武汉房价走势和房龄影响给参考估值",
             "requirement": {"area": 89, "layout": "两房", "building_age": 10, "missing_data": []},
             "computations": [],
-            "trend_sources": ["07_wuhan_market_trend.md"],
+            "trend_sources": ["市场数据_武汉住宅价格指数.md"],
             "verification": "",
         })
-        self.assertIn("市场趋势依据：[来源: 07_wuhan_market_trend.md]", result["report"])
+        self.assertIn("市场趋势依据：[来源: 市场数据_武汉住宅价格指数.md]", result["report"])
 
-    @patch("app.workflow.nodes._retrieve_trend_sources", return_value=["07_wuhan_market_trend.md"])
+    @patch("app.workflow.nodes._retrieve_trend_sources", return_value=["市场数据_武汉住宅价格指数.md"])
     def test_report_retrieves_trend_when_no_method_runs(self, mock_trend):
         result = report_node({
             "question": "结合武汉房价走势和房龄影响给参考估值",
@@ -136,7 +136,7 @@ class WorkflowUnitTest(unittest.TestCase):
             "trend_sources": [],
             "verification": "",
         })
-        self.assertIn("市场趋势依据：[来源: 07_wuhan_market_trend.md]", result["report"])
+        self.assertIn("市场趋势依据：[来源: 市场数据_武汉住宅价格指数.md]", result["report"])
         mock_trend.assert_called_once()
 
 
@@ -165,7 +165,7 @@ class WorkflowEndToEndTest(unittest.TestCase):
         result = self._invoke("某商铺年度稳定净收益60万元，资本化率5%，请评估价值并说明依据。")
         report = result["report"].replace(",", "")
         self.assertIn("12000000", report)
-        self.assertIn("02_income_approach.md", report)
+        self.assertIn("估价方法_收益法.md", report)
         self.assertIn("## 5. 交叉校核结论", report)
 
     def test_multi_method_workflow_report(self):
@@ -176,8 +176,8 @@ class WorkflowEndToEndTest(unittest.TestCase):
         report = result["report"].replace(",", "")
         self.assertGreaterEqual(len(result["computations"]), 2)
         self.assertIn("2000000", report)
-        self.assertIn("01_market_comparison.md", report)
-        self.assertIn("02_income_approach.md", report)
+        self.assertIn("估价方法_市场比较法.md", report)
+        self.assertIn("估价方法_收益法.md", report)
 
 
 if __name__ == "__main__":

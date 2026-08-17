@@ -1,3 +1,6 @@
+const API_BASE = (window.APP_API_BASE || "").replace(/\/$/, "");
+const apiUrl = (path) => `${API_BASE}${path}`;
+
 const answerEl = document.querySelector("#answer");
 const sourcesEl = document.querySelector("#sources");
 const elapsedEl = document.querySelector("#elapsed");
@@ -7,10 +10,22 @@ const reportJsonEl = document.querySelector("#report-json");
 const copyJsonButton = document.querySelector("#copy-json");
 const evaluateForm = document.querySelector("#evaluate-form");
 const evaluateSubmit = document.querySelector("#estimate-submit");
+const presetLoad = document.querySelector("#preset-load");
+const presetStatus = document.querySelector("#preset-status");
+let presetSources = [];
+let presetBasis = "";
 
 const knowledgeToggle = document.querySelector("#knowledge-toggle");
 const knowledgePanel = document.querySelector("#knowledge-panel");
 const knowledgeClose = document.querySelector("#knowledge-close");
+const adminEntry = document.querySelector(".admin-entry");
+const adminEntryToggle = document.querySelector("#admin-entry-toggle");
+const adminEntryPanel = document.querySelector("#admin-entry-panel");
+const adminEntryClose = document.querySelector("#admin-entry-close");
+const adminEntryForm = document.querySelector("#admin-entry-form");
+const adminEntryToken = document.querySelector("#admin-entry-token");
+const adminEntrySubmit = document.querySelector("#admin-entry-submit");
+const adminEntryStatus = document.querySelector("#admin-entry-status");
 
 function openKnowledge() {
   knowledgePanel.hidden = false;
@@ -38,6 +53,72 @@ document.addEventListener("keydown", (event) => {
 });
 document.addEventListener("pointerdown", (event) => {
   if (!knowledgePanel.hidden && !knowledgePanel.contains(event.target) && !knowledgeToggle.contains(event.target)) closeKnowledge();
+});
+
+function openAdminEntry() {
+  if (!knowledgePanel.hidden) closeKnowledge();
+  adminEntryPanel.hidden = false;
+  adminEntryStatus.textContent = "";
+  adminEntryStatus.className = "admin-entry-status";
+  document.body.classList.add("admin-entry-open");
+  window.requestAnimationFrame(() => adminEntryPanel.classList.add("is-open"));
+  adminEntryToggle.setAttribute("aria-expanded", "true");
+  adminEntryToken.focus();
+}
+
+function closeAdminEntry() {
+  adminEntryPanel.classList.remove("is-open");
+  document.body.classList.remove("admin-entry-open");
+  adminEntryToggle.setAttribute("aria-expanded", "false");
+  window.setTimeout(() => {
+    if (!adminEntryPanel.classList.contains("is-open")) adminEntryPanel.hidden = true;
+  }, 180);
+}
+
+adminEntryToggle.addEventListener("click", () => {
+  if (adminEntryPanel.hidden) openAdminEntry(); else closeAdminEntry();
+});
+adminEntryClose.addEventListener("click", closeAdminEntry);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !adminEntryPanel.hidden) closeAdminEntry();
+});
+document.addEventListener("pointerdown", (event) => {
+  if (!adminEntryPanel.hidden && !adminEntry.contains(event.target)) closeAdminEntry();
+});
+
+adminEntryForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const token = adminEntryToken.value.trim();
+  if (!token) {
+    adminEntryStatus.className = "admin-entry-status error";
+    adminEntryStatus.textContent = "请输入管理密钥";
+    adminEntryToken.focus();
+    return;
+  }
+  adminEntrySubmit.disabled = true;
+  adminEntrySubmit.classList.add("is-loading");
+  adminEntryStatus.className = "admin-entry-status";
+  adminEntryStatus.textContent = "正在验证...";
+  try {
+    const response = await fetch(apiUrl("/admin/access"), {
+      headers: { "X-Admin-Token": token },
+    });
+    if (response.status === 401) throw new Error("INVALID_TOKEN");
+    if (!response.ok) throw new Error("SERVER_ERROR");
+    adminEntryStatus.className = "admin-entry-status success";
+    adminEntryStatus.textContent = "验证通过，正在进入...";
+    const adminBase = API_BASE || window.location.origin;
+    const destination = new URL("/admin", adminBase);
+    destination.hash = new URLSearchParams({ access: token, return: window.location.origin }).toString();
+    window.location.assign(destination.toString());
+  } catch (error) {
+    adminEntryStatus.className = "admin-entry-status error";
+    adminEntryStatus.textContent = error.message === "INVALID_TOKEN" ? "管理密钥错误，请重新输入" : "无法连接后端，请确认服务已启动";
+    adminEntryToken.select();
+  } finally {
+    adminEntrySubmit.disabled = false;
+    adminEntrySubmit.classList.remove("is-loading");
+  }
 });
 
 function escapeHtml(text) {
@@ -129,9 +210,53 @@ function buildEvaluatePayload() {
     orientation: textValue("orientation"), floor: textValue("floor"), decoration: textValue("decoration"), location: textValue("location"),
     valuation_purpose: textValue("valuation_purpose"), valuation_date: textValue("valuation_date"), comparable_price: numberOrNull("comparable_price"),
     net_income: numberOrNull("net_income"), cap_rate: numberOrNull("cap_rate"), land_value: numberOrNull("land_value"),
-    replacement_cost: numberOrNull("replacement_cost"), depreciation: numberOrNull("depreciation"), note: textValue("note"),
+    replacement_cost: numberOrNull("replacement_cost"), depreciation: numberOrNull("depreciation"),
+    preset_year: numberOrNull("preset_year"), preset_sources: presetSources, preset_basis: presetBasis, note: textValue("note"),
   };
 }
+
+presetLoad.addEventListener("click", async () => {
+  const district = document.querySelector("#location").value;
+  const year = document.querySelector("#preset_year").value;
+  if (!district || !year) {
+    presetStatus.className = "is-error";
+    presetStatus.textContent = "请先选择武汉区域和数据年份";
+    return;
+  }
+  const params = new URLSearchParams({
+    district,
+    year,
+    property_usage: document.querySelector("#property_usage").value,
+  });
+  const area = document.querySelector("#area").value;
+  const buildingAge = document.querySelector("#building_age").value;
+  if (area) params.set("area", area);
+  if (buildingAge) params.set("building_age", buildingAge);
+  presetLoad.disabled = true;
+  presetStatus.className = "";
+  presetStatus.textContent = "正在计算预设参数...";
+  try {
+    const response = await fetch(apiUrl(`/api/presets/wuhan?${params}`));
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "预设加载失败");
+    for (const [id, field] of Object.entries(payload.fields)) {
+      if (field.value !== null && field.value !== undefined) {
+        document.querySelector(`#${id}`).value = field.value;
+        document.querySelector(`#${id}`).title = `${field.evidence}：${field.basis}`;
+      }
+    }
+    presetSources = payload.sources.map((source) => source.source);
+    presetBasis = `${district}，${year}年，代表地价${payload.representative_grade}级，市场系数${payload.market_factor}；参数含官方基准、公式推导和可编辑估值假设。`;
+    presetStatus.className = "is-ready";
+    presetStatus.textContent = `${year}年 · ${district} · ${payload.representative_grade}级地价 · 已填入，悬停字段可查看口径`;
+    document.querySelector(".known-data").open = true;
+  } catch (error) {
+    presetStatus.className = "is-error";
+    presetStatus.textContent = error.message;
+  } finally {
+    presetLoad.disabled = false;
+  }
+});
 
 copyJsonButton.addEventListener("click", async (event) => {
   event.preventDefault(); event.stopPropagation();
@@ -147,7 +272,7 @@ evaluateForm.addEventListener("submit", async (event) => {
   answerEl.classList.remove("empty", "report"); answerEl.textContent = "正在生成估值报告..."; sourcesEl.replaceChildren(); renderSteps([]); renderReportJson(""); elapsedEl.textContent = "";
   try {
     const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 75000);
-    const response = await fetch("/api/evaluate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildEvaluatePayload()), signal: controller.signal });
+    const response = await fetch(apiUrl("/api/evaluate"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildEvaluatePayload()), signal: controller.signal });
     window.clearTimeout(timeout); const payload = await response.json(); if (!response.ok) throw new Error(payload.detail || "请求失败");
     answerEl.innerHTML = renderMarkdown(payload.answer); answerEl.classList.add("report"); renderSteps(payload.steps || []); renderReportJson(payload.report_json || ""); renderSources(payload.answer); elapsedEl.textContent = `${((performance.now() - started) / 1000).toFixed(1)}s`;
   } catch (error) { answerEl.textContent = error.name === "AbortError" ? "请求超时，请稍后重试。" : `请求失败：${error.message}`; renderSteps([]); renderReportJson(""); }
@@ -210,7 +335,7 @@ async function analyzeLayout(file) {
   try {
     const data = new FormData();
     data.append("file", file);
-    const response = await fetch("/api/analyze-layout", { method: "POST", body: data });
+    const response = await fetch(apiUrl("/api/analyze-layout"), { method: "POST", body: data });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || "户型图解析失败");
     layoutInput.value = payload.layout || "";
@@ -248,7 +373,7 @@ ragForm.addEventListener("submit", async (event) => {
   try {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 75000);
-    const response = await fetch("/api/rag", {
+    const response = await fetch(apiUrl("/api/rag"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),

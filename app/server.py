@@ -1,18 +1,21 @@
 import hmac
 import time
 import re
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.config import PROJECT_ROOT, load_config
+from app.presets import build_wuhan_preset, preset_options
 from app.rag.chain import answer as rag_answer
-from app.rag.loader import load_docs
+from app.rag.loader import load_docs, load_document
 from app.rag.splitter import split_docs
 from app.rag.vectorstore import build_vectorstore, load_vectorstore
 from app.workflow.graph import workflow_app
@@ -41,9 +44,18 @@ WORKFLOW_INIT = {
 }
 
 app = FastAPI(title="RealEstate Eval Agent")
+_cors_origins = list(load_config().cors_origins)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Admin-Token"],
+)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
-ALLOWED_UPLOAD_SUFFIXES = {".md", ".pdf", ".docx", ".png", ".jpg", ".jpeg"}
+ALLOWED_UPLOAD_SUFFIXES = {".md", ".txt", ".csv", ".pdf", ".docx", ".png", ".jpg", ".jpeg"}
+DOCUMENT_CATEGORIES = {"估价方法", "市场数据", "政策法规", "估价规范", "业务知识", "用户资料"}
 
 
 @app.middleware("http")
@@ -78,6 +90,9 @@ class EvaluateRequest(BaseModel):
     land_value: float | None = None
     replacement_cost: float | None = None
     depreciation: float | None = None
+    preset_year: int | None = None
+    preset_sources: list[str] = Field(default_factory=list)
+    preset_basis: str = ""
     note: str = ""
 
 
@@ -101,29 +116,48 @@ def admin_index() -> FileResponse:
     return FileResponse(STATIC_DIR / "admin.html")
 
 
-@app.post("/admin/upload")
-async def admin_upload(file: UploadFile = File(...), x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
+@app.get("/admin/access")
+def admin_access(x_admin_token: str | None = Header(default=None)) -> dict[str, bool]:
     _require_admin(x_admin_token)
-    filename = Path(file.filename or "").name
-    suffix = Path(filename).suffix.lower()
-    if not filename or suffix not in ALLOWED_UPLOAD_SUFFIXES:
-        raise HTTPException(status_code=400, detail="仅支持 md、pdf、docx、png、jpg、jpeg 文件。")
-    content = await file.read(MAX_UPLOAD_BYTES + 1)
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="文件不能超过 20MB。")
+    return {"authorized": True}
+
+
+@app.post("/admin/preview")
+async def admin_preview(file: UploadFile = File(...), x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
+    _require_admin(x_admin_token)
+    content, suffix = await _read_upload(file)
+    return _preview_content(content, suffix, Path(file.filename or "document").name)
+
+
+@app.post("/admin/upload")
+async def admin_upload(
+    file: UploadFile = File(...),
+    category: str = Form(default="用户资料"),
+    title: str = Form(default=""),
+    x_admin_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_admin(x_admin_token)
+    content, suffix = await _read_upload(file)
+    if category not in DOCUMENT_CATEGORIES:
+        raise HTTPException(status_code=400, detail="无效的文档分类。")
+    filename = _document_filename(category, title or Path(file.filename or "document").stem, suffix)
     docs_dir = Path(load_config().docs_dir).resolve()
     docs_dir.mkdir(parents=True, exist_ok=True)
     target = (docs_dir / filename).resolve()
     if target.parent != docs_dir:
         raise HTTPException(status_code=400, detail="非法文件名。")
+    previous = target.read_bytes() if target.exists() else None
     target.write_bytes(content)
     try:
         count = _rebuild_index()
     except Exception as exc:
-        target.unlink(missing_ok=True)
+        if previous is None:
+            target.unlink(missing_ok=True)
+        else:
+            target.write_bytes(previous)
         _rebuild_index()
         raise HTTPException(status_code=400, detail=f"文件解析或入库失败：{exc}") from exc
-    return {"source": filename, "file_type": suffix[1:], "vector_count": count}
+    return {"source": filename, "file_type": suffix[1:], "vector_count": count, "replaced": previous is not None}
 
 
 @app.get("/admin/documents")
@@ -137,25 +171,101 @@ def admin_documents(x_admin_token: str | None = Header(default=None)) -> list[di
             documents.append({
                 "source": path.name,
                 "file_type": path.suffix.lower().lstrip("."),
+                "category": path.stem.split("_", 1)[0] if "_" in path.stem else "未分类",
                 "updated_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
                 "size": stat.st_size,
             })
     return documents
 
 
+@app.get("/admin/documents/{source}")
+def admin_document_preview(source: str, x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
+    _require_admin(x_admin_token)
+    target = _document_target(source)
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="文档不存在。")
+    document = load_document(target)
+    return _preview_document(document)
+
+
 @app.delete("/admin/documents/{source}")
 def admin_delete(source: str, x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
     _require_admin(x_admin_token)
+    target = _document_target(source)
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="文档不存在。")
+    previous = target.read_bytes()
+    target.unlink()
+    try:
+        count = _rebuild_index()
+    except Exception as exc:
+        target.write_bytes(previous)
+        _rebuild_index()
+        raise HTTPException(status_code=400, detail=f"删除后重建失败，原文档已恢复：{exc}") from exc
+    return {"source": target.name, "deleted": True, "vector_count": count}
+
+
+async def _read_upload(file: UploadFile) -> tuple[bytes, str]:
+    filename = Path(file.filename or "").name
+    suffix = Path(filename).suffix.lower()
+    if not filename or suffix not in ALLOWED_UPLOAD_SUFFIXES:
+        raise HTTPException(status_code=400, detail="仅支持 md、txt、csv、pdf、docx、png、jpg、jpeg 文件。")
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="文件不能超过 20MB。")
+    return content, suffix
+
+
+def _document_filename(category: str, title: str, suffix: str) -> str:
+    clean_title = re.sub(r"[\\/:*?\"<>|\x00-\x1f]+", "_", title).strip(" ._")
+    if not clean_title:
+        raise HTTPException(status_code=400, detail="文档标题不能为空。")
+    if len(clean_title) > 80:
+        clean_title = clean_title[:80].rstrip()
+    return f"{category}_{clean_title}{suffix}"
+
+
+def _document_target(source: str) -> Path:
     filename = Path(source).name
     docs_dir = Path(load_config().docs_dir).resolve()
     target = (docs_dir / filename).resolve()
     if target.parent != docs_dir or target.name != source or target.suffix.lower() not in ALLOWED_UPLOAD_SUFFIXES:
         raise HTTPException(status_code=400, detail="非法文档来源。")
-    if not target.exists():
-        raise HTTPException(status_code=404, detail="文档不存在。")
-    target.unlink()
-    count = _rebuild_index()
-    return {"source": filename, "deleted": True, "vector_count": count}
+    return target
+
+
+def _preview_content(content: bytes, suffix: str, source: str) -> dict[str, Any]:
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temporary:
+            temporary.write(content)
+            temporary_path = Path(temporary.name)
+        document = load_document(temporary_path)
+        document.metadata["source"] = source
+        return _preview_document(document)
+    finally:
+        if temporary_path:
+            temporary_path.unlink(missing_ok=True)
+
+
+def _preview_document(document) -> dict[str, Any]:
+    chunks = split_docs([document])
+    return {
+        "source": document.metadata.get("source", ""),
+        "file_type": document.metadata.get("file_type", ""),
+        "characters": len(document.page_content),
+        "chunk_count": len(chunks),
+        "overlap_ratio": 0.10,
+        "chunks": [
+            {
+                "index": chunk.metadata["chunk"],
+                "characters": chunk.metadata["chunk_size"],
+                "overlap_chars": chunk.metadata["overlap_chars"],
+                "text": chunk.page_content[:600],
+            }
+            for chunk in chunks[:12]
+        ],
+    }
 
 
 def _require_admin(token: str | None) -> None:
@@ -203,7 +313,7 @@ def _run_workflow(init: dict[str, Any]) -> AskResponse:
     return AskResponse(answer=answer_text, steps=steps, report_json=report_json)
 
 
-def _collect_known_data(request: EvaluateRequest) -> dict[str, float]:
+def _collect_known_data(request: EvaluateRequest) -> dict[str, Any]:
     values = {
         "comparable_price": request.comparable_price,
         "net_income": request.net_income,
@@ -212,7 +322,14 @@ def _collect_known_data(request: EvaluateRequest) -> dict[str, float]:
         "replacement_cost": request.replacement_cost,
         "depreciation": request.depreciation,
     }
-    return {key: value for key, value in values.items() if value is not None}
+    known_data: dict[str, Any] = {key: value for key, value in values.items() if value is not None}
+    if request.preset_sources:
+        known_data["preset_sources"] = request.preset_sources
+    if request.preset_basis:
+        known_data["preset_basis"] = request.preset_basis
+    if request.preset_year:
+        known_data["preset_year"] = request.preset_year
+    return known_data
 
 
 def _build_question(request: EvaluateRequest) -> str:
@@ -242,6 +359,8 @@ def _build_question(request: EvaluateRequest) -> str:
         data.append(f"折旧{request.depreciation}元")
     if data:
         parts.append("已知数据：" + "；".join(data))
+    if request.preset_basis:
+        parts.append(f"武汉区域年份预设：{request.preset_basis}")
     if request.note:
         parts.append(f"补充说明：{request.note}")
     return "，".join(parts) + "。请给出参考估值。"
@@ -265,6 +384,25 @@ def evaluate(request: EvaluateRequest) -> AskResponse:
     }
     init = dict(WORKFLOW_INIT, question=_build_question(request), requirement=requirement)
     return _run_workflow(init)
+
+
+@app.get("/api/presets/options")
+def get_preset_options() -> dict[str, Any]:
+    return preset_options()
+
+
+@app.get("/api/presets/wuhan")
+def get_wuhan_preset(
+    district: str,
+    year: int,
+    property_usage: str = "住宅",
+    area: float | None = None,
+    building_age: float | None = None,
+) -> dict[str, Any]:
+    try:
+        return build_wuhan_preset(district, year, property_usage, area, building_age)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/analyze-layout")

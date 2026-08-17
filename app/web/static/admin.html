@@ -2,33 +2,58 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef2f1" />
     <title>知识库管理</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260817-mobile1" />
-    <style>
-      .admin-panel { max-width: 760px; margin: 0 auto; }
-      .admin-form, .admin-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-      .admin-form { margin: 20px 0; padding: 16px; background: #fff; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line); }
-      .admin-form input { min-height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; }
-      .admin-form input[type="text"] { flex: 1; min-width: 220px; }
-      .admin-form input[type="file"] { max-width: 100%; }
-      .admin-table { width: 100%; border-collapse: collapse; background: #fff; }
-      .admin-table th, .admin-table td { padding: 11px; text-align: left; border-bottom: 1px solid var(--line); }
-      .admin-table button { border: 0; padding: 7px 10px; border-radius: 5px; color: #fff; background: var(--copper); cursor: pointer; }
-      #admin-status { min-height: 24px; color: var(--muted); }
-    </style>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/static/styles.css?v=20260817-admin-entry1" />
   </head>
   <body>
-    <main class="shell"><section class="panel admin-panel">
-      <header class="panel-header"><div><p class="eyebrow">RealEstate Eval Agent</p><h1>知识库管理</h1></div><a href="/">返回问答</a></header>
-      <form id="admin-form" class="admin-form">
-        <input id="token" type="text" placeholder="X-Admin-Token" autocomplete="off" required />
-        <input id="file" type="file" accept=".md,.pdf,.docx,.png,.jpg,.jpeg" required />
-        <button class="submit" type="submit">上传并入库</button>
-      </form>
-      <div id="admin-status" aria-live="polite"></div>
-      <table class="admin-table"><thead><tr><th>文档</th><th>类型</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="documents"></tbody></table>
-    </section></main>
-    <script src="/static/admin.js"></script>
+    <main class="shell">
+      <section class="panel admin-shell">
+        <header class="panel-header admin-header">
+          <div><p class="eyebrow">Knowledge Operations</p><h1>知识库管理</h1></div>
+          <a class="secondary-action admin-back" href="/">返回估值</a>
+        </header>
+
+        <section class="admin-auth" aria-labelledby="auth-heading">
+          <div><strong id="auth-heading">管理凭证</strong><small>凭证仅保存在当前浏览器会话</small></div>
+          <div class="admin-auth-row">
+            <input id="token" type="password" placeholder="X-Admin-Token" autocomplete="off" />
+            <button id="load-documents" class="secondary-action" type="button">连接知识库</button>
+          </div>
+        </section>
+
+        <div class="admin-workspace">
+          <section class="admin-upload" aria-labelledby="upload-heading">
+            <div class="section-heading"><div><span id="upload-heading">新增或更新文档</span><small>同名文档将安全覆盖并重建索引</small></div></div>
+            <form id="admin-form" class="admin-form">
+              <label><span>大类</span><select id="category" required><option>市场数据</option><option>估价方法</option><option>政策法规</option><option>估价规范</option><option>业务知识</option><option selected>用户资料</option></select></label>
+              <label><span>中文标题</span><input id="document-title" type="text" maxlength="80" placeholder="例如：武汉2024年市场月报" required /></label>
+              <label><span>文档文件</span><input id="file" type="file" accept=".md,.txt,.csv,.pdf,.docx,.png,.jpg,.jpeg" required /></label>
+              <p class="admin-format-note">支持 Markdown、TXT、CSV、PDF、Word DOCX、PNG/JPG；单文件最大 20MB。</p>
+              <div class="admin-actions">
+                <button id="preview-upload" class="secondary-action" type="button">预览切分</button>
+                <button id="upload-document" class="submit" type="submit">确认入库</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="admin-preview" aria-labelledby="preview-heading">
+            <div class="section-heading"><div><span id="preview-heading">切分预览</span><small>相邻片段保留 10% 重叠</small></div><span id="preview-meta" class="admin-meta"></span></div>
+            <div id="chunk-preview" class="chunk-preview empty">选择文件后先预览切分结果。</div>
+          </section>
+        </div>
+
+        <div id="admin-status" class="admin-status" aria-live="polite">等待连接知识库。</div>
+
+        <section class="admin-library" aria-labelledby="library-heading">
+          <div class="section-heading"><div><span id="library-heading">已入库文档</span><small>按中文大类组织，操作后自动重建向量库</small></div><span id="document-count" class="admin-meta"></span></div>
+          <div id="documents" class="document-list empty">输入管理凭证后加载。</div>
+        </section>
+      </section>
+    </main>
+    <script src="/static/frontend-config.js?v=20260817-preset1"></script>
+    <script src="/static/admin.js?v=20260817-admin-entry1"></script>
   </body>
 </html>

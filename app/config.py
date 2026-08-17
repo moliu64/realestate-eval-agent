@@ -30,6 +30,7 @@ class Config:
     vision_api_key: str | None
     vision_model: str
     admin_token: str | None
+    cors_origins: tuple[str, ...]
 
 
 @lru_cache(maxsize=1)
@@ -52,6 +53,14 @@ def load_config() -> Config:
     vision_api_key = os.getenv("VISION_API_KEY") or None
     vision_model = os.getenv("VISION_MODEL", "qwen-vl-plus")
     admin_token = os.getenv("ADMIN_TOKEN") or None
+    cors_origins = tuple(
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ORIGINS",
+            "http://127.0.0.1:5173,http://localhost:5173",
+        ).split(",")
+        if origin.strip()
+    )
 
     return Config(
         base_url=base_url,
@@ -69,4 +78,5 @@ def load_config() -> Config:
         vision_api_key=vision_api_key,
         vision_model=vision_model,
         admin_token=admin_token,
+        cors_origins=cors_origins,
     )

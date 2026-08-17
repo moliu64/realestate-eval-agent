@@ -1,3 +1,3 @@
-{"question":"某商铺年度稳定净收益60万元，资本化率5%，适合用什么方法估值，估值多少？","expected_tool":"calc_income_approach","expected_value":"12000000","expected_source":"02_income_approach.md"}
-{"question":"某住宅可比实例成交单价20000元/平方米，建筑面积100平方米，各项修正系数均为1.0，用市场比较法估值多少？","expected_tool":"calc_market_comparison","expected_value":"2000000","expected_source":"01_market_comparison.md"}
-{"question":"某工业厂房土地价值100万元，建筑物重置成本200万元，折旧30万元，用成本法估值多少？","expected_tool":"calc_cost_approach","expected_value":"2700000","expected_source":"03_cost_approach.md"}
+{"question":"某商铺年度稳定净收益60万元，资本化率5%，适合用什么方法估值，估值多少？","expected_tool":"calc_income_approach","expected_value":"12000000","expected_source":"估价方法_收益法.md"}
+{"question":"某住宅可比实例成交单价20000元/平方米，建筑面积100平方米，各项修正系数均为1.0，用市场比较法估值多少？","expected_tool":"calc_market_comparison","expected_value":"2000000","expected_source":"估价方法_市场比较法.md"}
+{"question":"某工业厂房土地价值100万元，建筑物重置成本200万元，折旧30万元，用成本法估值多少？","expected_tool":"calc_cost_approach","expected_value":"2700000","expected_source":"估价方法_成本法.md"}

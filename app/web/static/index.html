@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef2f1" />
     <title>房地产估价工作台</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/static/styles.css?v=20260817-mobile1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260817-admin-entry1" />
   </head>
   <body>
     <main class="shell">
@@ -74,13 +74,18 @@
                 <label class="field-row"><span>朝向</span><input id="orientation" type="text" placeholder="南北" /></label>
                 <label class="field-row"><span>楼层</span><input id="floor" type="text" placeholder="中楼层 / 共18层" /></label>
                 <label class="field-row"><span>装修</span><input id="decoration" type="text" placeholder="精装" /></label>
-                <label class="field-row"><span>区位</span><input id="location" type="text" placeholder="光谷" /></label>
+                <label class="field-row"><span>武汉区域</span><select id="location"><option value="">请选择区域</option><option>江岸区</option><option>江汉区</option><option>硚口区</option><option>汉阳区</option><option>武昌区</option><option>青山区</option><option>洪山区</option><option>东西湖区</option><option>汉南区</option><option>蔡甸区</option><option>江夏区</option><option>黄陂区</option><option>新洲区</option><option>东湖高新区</option><option>武汉经开区</option></select></label>
+                <label class="field-row"><span>数据年份</span><select id="preset_year"><option value="">请选择年份</option><option>2024</option><option>2023</option><option>2022</option><option>2021</option><option>2020</option><option>2019</option></select></label>
                 <label class="field-row"><span>估价目的</span><input id="valuation_purpose" type="text" placeholder="买卖参考" /></label>
                 <label class="field-row"><span>估价时点</span><input id="valuation_date" type="date" /></label>
               </div>
 
               <details class="known-data">
                 <summary><span>计算参数</span><small>按需填写</small></summary>
+                <div class="preset-toolbar">
+                  <button id="preset-load" class="secondary-action" type="button">载入武汉预设</button>
+                  <span id="preset-status" aria-live="polite">选择区域和年份后载入</span>
+                </div>
                 <div class="factor-list compact-factors">
                   <label class="field-row"><span>可比单价</span><span class="input-unit"><input id="comparable_price" type="number" min="0" step="0.01" /><i>元/㎡</i></span></label>
                   <label class="field-row"><span>年净收益</span><span class="input-unit"><input id="net_income" type="number" min="0" step="0.01" /><i>元</i></span></label>
@@ -106,6 +111,25 @@
         </section>
       </section>
     </main>
-    <script src="/static/app.js?v=20260817-mobile1"></script>
+    <div class="admin-entry">
+      <button id="admin-entry-toggle" class="admin-entry-toggle" type="button" aria-expanded="false" aria-controls="admin-entry-panel">
+        <span class="admin-entry-mark" aria-hidden="true">A</span>
+        <span>管理入口</span>
+      </button>
+      <aside id="admin-entry-panel" class="admin-entry-panel" aria-labelledby="admin-entry-heading" hidden>
+        <div class="admin-entry-head">
+          <div><strong id="admin-entry-heading">知识库管理</strong><small>验证管理密钥后进入</small></div>
+          <button id="admin-entry-close" class="icon-button close-button" type="button" aria-label="关闭管理入口" title="关闭">×</button>
+        </div>
+        <form id="admin-entry-form" class="admin-entry-form">
+          <label for="admin-entry-token">管理密钥</label>
+          <input id="admin-entry-token" type="password" autocomplete="current-password" placeholder="输入 ADMIN_TOKEN" required />
+          <button id="admin-entry-submit" class="submit" type="submit"><span class="submit-label">进入管理</span><span class="spinner" aria-hidden="true"></span></button>
+          <p id="admin-entry-status" class="admin-entry-status" aria-live="polite"></p>
+        </form>
+      </aside>
+    </div>
+    <script src="/static/frontend-config.js?v=20260817-preset1"></script>
+    <script src="/static/app.js?v=20260817-admin-entry1"></script>
   </body>
 </html>

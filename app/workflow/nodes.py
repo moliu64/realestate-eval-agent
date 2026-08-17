@@ -30,9 +30,9 @@ METHOD_QUERY = {
 }
 
 METHOD_SOURCES = {
-    "market_comparison": "01_market_comparison.md",
-    "income": "02_income_approach.md",
-    "cost": "03_cost_approach.md",
+    "market_comparison": "估价方法_市场比较法.md",
+    "income": "估价方法_收益法.md",
+    "cost": "估价方法_成本法.md",
 }
 
 REQUIRED_PARAMS = {
@@ -185,6 +185,11 @@ def verify_node(state: EvalState) -> dict:
 def report_node(state: EvalState) -> dict:
     computations = state.get("computations") or []
     sources = _collect_sources(computations)
+    requirement = state.get("requirement", {}) or {}
+    known_data = requirement.get("known_data") or {}
+    for source in known_data.get("preset_sources") or []:
+        if source not in sources:
+            sources.append(source)
     trend_sources = state.get("trend_sources") or []
     if not trend_sources:
         trend_sources = _retrieve_trend_sources(state["question"])
@@ -193,7 +198,8 @@ def report_node(state: EvalState) -> dict:
         f"### {METHOD_LABELS.get(item['method'], item['method'])}\n{item['result']}\n[来源: {item.get('source') or '未匹配'}]"
         for item in computations
     ) or "暂无计算结果。"
-    missing = state.get("requirement", {}).get("missing_data") or []
+    missing = requirement.get("missing_data") or []
+    preset_basis = known_data.get("preset_basis") or "未使用区域年份预设"
 
     draft = (
         "# 房地产估价报告\n\n"
@@ -208,6 +214,7 @@ def report_node(state: EvalState) -> dict:
         f"- 楼层：{state.get('requirement', {}).get('floor') or '未明确'}\n"
         f"- 装修：{state.get('requirement', {}).get('decoration') or '未明确'}\n"
         f"- 市场趋势依据：{'; '.join(f'[来源: {source}]' for source in trend_sources) or '未检索到趋势资料'}\n\n"
+        f"- 参数预设口径：{preset_basis}\n\n"
         "## 2. 估价目的与时点\n"
         f"- 估价目的：{state.get('requirement', {}).get('valuation_purpose') or '未明确'}\n"
         f"- 估价时点：{state.get('requirement', {}).get('valuation_date') or '未明确'}\n\n"
@@ -400,7 +407,7 @@ def _retrieve_trend_sources(question: str) -> list[str]:
     sources: list[str] = []
     for doc, _ in retrieve("武汉房地产市场趋势 户型 房龄 价格走势", k=4):
         source = doc.metadata.get("source", "")
-        if "wuhan_market_trend" in source and source not in sources:
+        if source.startswith("市场数据_武汉") and source not in sources:
             sources.append(source)
     return sources
 
