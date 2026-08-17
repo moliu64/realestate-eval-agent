@@ -22,4 +22,8 @@
 
 - `reference/WUHAN_MARKET_DATA.md`：武汉市场数据原始整理稿
 
+## 部署
+
+- `deployment/CLOUDFLARE.md`：Cloudflare Tunnel 拓扑、启动方式和运维检查
+
 上述规划和评审文件属于历史决策记录。当前运行方式和目录结构以根目录 `README.md` 为准。

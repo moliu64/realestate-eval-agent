@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $python = Join-Path $projectRoot ".venv\Scripts\python.exe"
 $cloudflared = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
 $tunnelConfig = Join-Path $env:USERPROFILE ".cloudflared\config.yml"

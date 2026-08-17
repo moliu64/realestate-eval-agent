@@ -35,7 +35,7 @@ def load_vectorstore(persist_dir: str) -> Chroma:
     path = Path(persist_dir)
     if not path.exists():
         raise FileNotFoundError(
-            f"Vector database not found: {path}. Run `python scripts/build_index.py --rebuild` first."
+            f"Vector database not found: {path}. Run `python scripts/indexing/build_index.py --rebuild` first."
         )
     return Chroma(
         persist_directory=str(path),
