@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -45,6 +45,7 @@ WORKFLOW_INIT = {
 
 app = FastAPI(title="RealEstate Eval Agent")
 _cors_origins = list(load_config().cors_origins)
+_public_host = load_config().public_host
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
@@ -60,12 +61,29 @@ DOCUMENT_CATEGORIES = {"估价方法", "市场数据", "政策法规", "估价�
 
 @app.middleware("http")
 async def prevent_stale_frontend_assets(request: Request, call_next):
+    forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme).lower()
+    request_host = request.headers.get("host", "").split(":", 1)[0].lower()
+    if _public_host and request_host == _public_host and forwarded_proto == "http":
+        return RedirectResponse(str(request.url.replace(scheme="https")), status_code=308)
+
     response = await call_next(request)
     if request.url.path in {"/", "/admin"}:
         response.headers["Cache-Control"] = "no-cache"
         response.headers["Pragma"] = "no-cache"
     elif request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; "
+        "script-src 'self' https://static.cloudflareinsights.com; "
+        "connect-src 'self' https://cloudflareinsights.com; font-src 'self'; object-src 'none'; "
+        "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if forwarded_proto == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
     return response
 
 

@@ -31,6 +31,7 @@ class Config:
     vision_model: str
     admin_token: str | None
     cors_origins: tuple[str, ...]
+    public_host: str
 
 
 @lru_cache(maxsize=1)
@@ -61,6 +62,7 @@ def load_config() -> Config:
         ).split(",")
         if origin.strip()
     )
+    public_host = os.getenv("PUBLIC_HOST", "060115.top").strip().lower()
 
     return Config(
         base_url=base_url,
@@ -79,4 +81,5 @@ def load_config() -> Config:
         vision_model=vision_model,
         admin_token=admin_token,
         cors_origins=cors_origins,
+        public_host=public_host,
     )

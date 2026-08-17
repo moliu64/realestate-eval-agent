@@ -122,6 +122,7 @@
           <button id="admin-entry-close" class="icon-button close-button" type="button" aria-label="关闭管理入口" title="关闭">×</button>
         </div>
         <form id="admin-entry-form" class="admin-entry-form">
+          <input class="visually-hidden" type="text" name="username" value="admin" autocomplete="username" tabindex="-1" aria-hidden="true" />
           <label for="admin-entry-token">管理密钥</label>
           <input id="admin-entry-token" type="password" autocomplete="current-password" placeholder="输入 ADMIN_TOKEN" required />
           <button id="admin-entry-submit" class="submit" type="submit"><span class="submit-label">进入管理</span><span class="spinner" aria-hidden="true"></span></button>
