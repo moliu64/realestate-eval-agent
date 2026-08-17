@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef2f1" />
+    <title>房地产估价工作台</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/static/styles.css?v=20260817-mobile1" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel appraisal-shell" aria-label="房地产估价工作台">
+        <header class="panel-header">
+          <div>
+            <p class="eyebrow">RealEstate Eval Agent</p>
+            <h1>房地产估价工作台</h1>
+          </div>
+          <div class="header-actions">
+            <span class="service-state"><span aria-hidden="true"></span>知识库就绪</span>
+            <button id="knowledge-toggle" class="icon-button search-icon" type="button" aria-label="打开知识检索" aria-expanded="false" aria-controls="knowledge-panel" title="知识检索"></button>
+          </div>
+
+          <aside id="knowledge-panel" class="knowledge-panel" aria-label="知识检索" hidden>
+            <div class="knowledge-head">
+              <div><span>知识检索</span><small>独立检索估价依据</small></div>
+              <button id="knowledge-close" class="icon-button close-button" type="button" aria-label="关闭知识检索" title="关闭">×</button>
+            </div>
+            <form id="rag-form" class="rag-form">
+              <label class="visually-hidden" for="rag-question">检索问题</label>
+              <div class="search-row">
+                <input id="rag-question" type="search" maxlength="500" placeholder="例如：资本化率如何确定？" />
+                <button id="rag-submit" class="compact-submit" type="submit"><span class="submit-label">检索</span><span class="spinner" aria-hidden="true"></span></button>
+              </div>
+            </form>
+            <div class="knowledge-result" aria-live="polite">
+              <div class="answer-head"><span>回答</span><span id="rag-elapsed" class="elapsed"></span></div>
+              <div id="rag-answer" class="answer empty">输入问题后显示知识库答案。</div>
+              <div id="rag-sources" class="sources" aria-label="检索来源"></div>
+            </div>
+          </aside>
+        </header>
+
+        <form id="evaluate-form" class="estimate-form">
+          <div class="valuation-workspace">
+            <section class="layout-evidence" aria-labelledby="layout-heading">
+              <div class="section-heading">
+                <div><span id="layout-heading">户型图</span><small>图片将由视觉模型解析</small></div>
+                <button id="layout-upload" class="secondary-action" type="button">选择图片</button>
+              </div>
+              <input id="layout-file" class="visually-hidden" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" />
+              <div id="layout-dropzone" class="layout-stage">
+                <div id="layout-placeholder" class="layout-placeholder">
+                  <span class="plan-symbol" aria-hidden="true"></span>
+                  <strong>上传房间布局图</strong>
+                  <p>支持 PNG、JPG、JPEG，最大 20MB</p>
+                </div>
+                <img id="layout-preview" alt="用户上传的户型图预览" hidden />
+                <button id="layout-remove" class="image-remove" type="button" aria-label="移除户型图" title="移除户型图" hidden>×</button>
+              </div>
+              <div class="evidence-meta">
+                <span id="layout-filename">尚未选择图片</span>
+                <span id="layout-status" aria-live="polite">可直接填写右侧户型</span>
+              </div>
+            </section>
+
+            <section class="factor-sheet" aria-labelledby="factors-heading">
+              <div class="section-heading"><div><span id="factors-heading">关键因素</span><small>按实际情况填写</small></div></div>
+              <div class="factor-list">
+                <label class="field-row"><span>用途</span><select id="property_usage"><option value="住宅">住宅</option><option value="商铺">商铺</option><option value="办公">办公</option><option value="工业厂房">工业厂房</option></select></label>
+                <label class="field-row"><span>建筑面积</span><span class="input-unit"><input id="area" type="number" min="0" step="0.01" placeholder="100" /><i>㎡</i></span></label>
+                <label class="field-row"><span>户型</span><input id="layout" type="text" placeholder="三房两厅" /></label>
+                <label class="field-row"><span>房龄</span><span class="input-unit"><input id="building_age" type="number" min="0" step="0.1" /><i>年</i></span></label>
+                <label class="field-row"><span>朝向</span><input id="orientation" type="text" placeholder="南北" /></label>
+                <label class="field-row"><span>楼层</span><input id="floor" type="text" placeholder="中楼层 / 共18层" /></label>
+                <label class="field-row"><span>装修</span><input id="decoration" type="text" placeholder="精装" /></label>
+                <label class="field-row"><span>区位</span><input id="location" type="text" placeholder="光谷" /></label>
+                <label class="field-row"><span>估价目的</span><input id="valuation_purpose" type="text" placeholder="买卖参考" /></label>
+                <label class="field-row"><span>估价时点</span><input id="valuation_date" type="date" /></label>
+              </div>
+
+              <details class="known-data">
+                <summary><span>计算参数</span><small>按需填写</small></summary>
+                <div class="factor-list compact-factors">
+                  <label class="field-row"><span>可比单价</span><span class="input-unit"><input id="comparable_price" type="number" min="0" step="0.01" /><i>元/㎡</i></span></label>
+                  <label class="field-row"><span>年净收益</span><span class="input-unit"><input id="net_income" type="number" min="0" step="0.01" /><i>元</i></span></label>
+                  <label class="field-row"><span>资本化率</span><input id="cap_rate" type="number" min="0" step="0.001" placeholder="0.05" /></label>
+                  <label class="field-row"><span>土地价值</span><span class="input-unit"><input id="land_value" type="number" min="0" step="0.01" /><i>元</i></span></label>
+                  <label class="field-row"><span>重置成本</span><span class="input-unit"><input id="replacement_cost" type="number" min="0" step="0.01" /><i>元</i></span></label>
+                  <label class="field-row"><span>折旧</span><span class="input-unit"><input id="depreciation" type="number" min="0" step="0.01" /><i>元</i></span></label>
+                </div>
+              </details>
+
+              <label class="note-field"><span>补充说明</span><textarea id="note" rows="2" placeholder="补充权利、现场或市场情况"></textarea></label>
+              <button id="estimate-submit" class="submit" type="submit"><span class="submit-label">生成估值报告</span><span class="spinner" aria-hidden="true"></span></button>
+            </section>
+          </div>
+        </form>
+
+        <section class="answer-card report-section" aria-live="polite">
+          <div class="answer-head"><span>估价报告</span><span id="elapsed" class="elapsed"></span></div>
+          <section class="steps-panel" aria-label="执行过程"><div class="subhead"><span>执行过程</span><span id="step-count" class="subhead-meta"></span></div><div id="steps" class="steps empty">等待估值。</div></section>
+          <div id="answer" class="answer empty">填写关键因素后生成报告。</div>
+          <div id="sources" class="sources" aria-label="来源"></div>
+          <details class="json-panel"><summary><span>结构化数据</span><button id="copy-json" class="copy-json" type="button">复制</button></summary><pre id="report-json" class="report-json">等待 JSON 输出。</pre></details>
+        </section>
+      </section>
+    </main>
+    <script src="/static/app.js?v=20260817-mobile1"></script>
+  </body>
+</html>

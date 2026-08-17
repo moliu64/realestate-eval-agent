@@ -1,0 +1,10 @@
+.env
+data/vector_db/
+__pycache__/
+*.py[cod]
+*.log
+.npm-cache/
+.playwright-cli/
+.pytest_cache/
+.venv/
+venv/

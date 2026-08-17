@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>知识库管理</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260817-mobile1" />
+    <style>
+      .admin-panel { max-width: 760px; margin: 0 auto; }
+      .admin-form, .admin-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .admin-form { margin: 20px 0; padding: 16px; background: #fff; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line); }
+      .admin-form input { min-height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; }
+      .admin-form input[type="text"] { flex: 1; min-width: 220px; }
+      .admin-form input[type="file"] { max-width: 100%; }
+      .admin-table { width: 100%; border-collapse: collapse; background: #fff; }
+      .admin-table th, .admin-table td { padding: 11px; text-align: left; border-bottom: 1px solid var(--line); }
+      .admin-table button { border: 0; padding: 7px 10px; border-radius: 5px; color: #fff; background: var(--copper); cursor: pointer; }
+      #admin-status { min-height: 24px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <main class="shell"><section class="panel admin-panel">
+      <header class="panel-header"><div><p class="eyebrow">RealEstate Eval Agent</p><h1>知识库管理</h1></div><a href="/">返回问答</a></header>
+      <form id="admin-form" class="admin-form">
+        <input id="token" type="text" placeholder="X-Admin-Token" autocomplete="off" required />
+        <input id="file" type="file" accept=".md,.pdf,.docx,.png,.jpg,.jpeg" required />
+        <button class="submit" type="submit">上传并入库</button>
+      </form>
+      <div id="admin-status" aria-live="polite"></div>
+      <table class="admin-table"><thead><tr><th>文档</th><th>类型</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="documents"></tbody></table>
+    </section></main>
+    <script src="/static/admin.js"></script>
+  </body>
+</html>
