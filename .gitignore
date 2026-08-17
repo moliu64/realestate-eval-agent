@@ -1,10 +1,31 @@
+# Local configuration and secrets
 .env
-data/vector_db/
-__pycache__/
-*.py[cod]
-*.log
-.npm-cache/
-.playwright-cli/
-.pytest_cache/
+.env.*
+!.env.example
+
+# Python environments and caches
 .venv/
 venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Runtime and generated artifacts
+data/vector_db/
+output/
+*.log
+
+# Local tooling and IDE state
+.npm-cache/
+.playwright-cli/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

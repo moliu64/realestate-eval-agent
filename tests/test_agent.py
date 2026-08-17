@@ -11,7 +11,7 @@ class AgentEndToEndTest(unittest.TestCase):
     def test_all_valuation_scenarios(self):
         cases = [
             json.loads(line)
-            for line in Path("tests/agent_questions.jsonl").read_text(encoding="utf-8").splitlines()
+            for line in Path("tests/fixtures/agent_questions.jsonl").read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
         for case in cases:

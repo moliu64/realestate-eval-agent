@@ -65,7 +65,7 @@ python run_web.py
 打开 `http://127.0.0.1:8000`。
 Web UI 会展示 Markdown 估价报告、工作流执行过程时间线，并在“结构化数据”面板提供同一结果的 JSON 输出，方便面试演示和下游系统集成。
 
-首页现分为“估值”和“知识检索”两个 tab：估值表单调用 `/api/evaluate`，结构化填写估价因素和计算参数；户型字段支持上传布局图并调用 `/api/analyze-layout`；知识检索调用 `/api/rag`。原 `/api/ask` 自由文本估值接口继续保留兼容。
+首页以估值工作台为主：估值表单调用 `/api/evaluate`，结构化填写估价因素和计算参数；左侧支持上传户型图并调用 `/api/analyze-layout`。知识检索通过右上角搜索按钮打开独立面板并调用 `/api/rag`，不会中断估值输入。原 `/api/ask` 自由文本估值接口继续保留兼容。
 
 知识库管理页为 `http://127.0.0.1:8000/admin`。先在 `.env` 配置随机的 `ADMIN_TOKEN`，再在请求头 `X-Admin-Token` 或管理页中使用它。管理页支持 `.md`、`.pdf`、`.docx`、`.png`、`.jpg`、`.jpeg` 上传、列出和删除；每次变更都会自动重建向量库，单文件上限 20MB。
 
@@ -156,6 +156,24 @@ START -> understand -> plan -> next_method
 - `app/agent/graph.py`：LangGraph 工具调用循环，复用 Phase 1 检索和 LLM。
 - `app/workflow/graph.py`：Phase 3 多节点工作流，自动完成需求理解、方法规划、逐方法检索计算、交叉校核和报告生成。
 - `app/server.py`：问答 API、工作流过程输出，以及带 `X-Admin-Token` 鉴权的知识库管理 API。
+
+## 项目结构
+
+```text
+.
+├── .github/workflows/   # GitHub Actions 持续集成
+├── app/                 # API、Agent、RAG、估价工作流与 Web 静态资源
+├── data/docs/           # 可入库的估价知识文档
+├── docs/                # 规划、评审和数据参考资料
+├── scripts/             # 文档校验与向量库构建脚本
+├── tests/fixtures/      # 自动化测试数据
+├── tests/               # 单元、检索和工作流测试
+├── run_*.py             # 本地 CLI 与 Web 启动入口
+├── requirements.txt     # 兼容版本范围
+└── requirements.lock    # 可复现的锁定依赖
+```
+
+`output/`、`data/vector_db/`、本地虚拟环境、测试截图和运行日志均为可再生成内容，不纳入版本控制。历史实施资料索引见 [`docs/README.md`](docs/README.md)。
 
 ## Phase 2 面试讲解要点
 

@@ -16,7 +16,7 @@ class RetrieverTest(unittest.TestCase):
     def test_retrieval_hits_expected_sources(self):
         cases = [
             json.loads(line)
-            for line in Path("tests/eval_questions.jsonl").read_text(encoding="utf-8").splitlines()
+            for line in Path("tests/fixtures/eval_questions.jsonl").read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
         hits = 0
