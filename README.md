@@ -89,6 +89,8 @@ python run_web.py
 
 打开 `http://127.0.0.1:8000`。这是本地使用和 Cloudflare Tunnel 采用的入口。
 
+首页支持三栏估价工作台：左侧管理可持久化会话，中间进行多轮估价对话，右侧上传并查看户型图解析。会话数据保存在本地 `data/sessions/`，该目录已加入忽略规则，不会进入版本库。
+
 ### 前后端独立运行
 
 Windows 下先双击 `start_backend.bat`，再双击 `start_frontend.bat`：

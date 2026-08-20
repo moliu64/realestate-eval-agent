@@ -19,6 +19,7 @@ dist/
 
 # Runtime and generated artifacts
 data/vector_db/
+data/sessions/
 output/
 *.log
 

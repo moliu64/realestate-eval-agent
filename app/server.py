@@ -1,8 +1,10 @@
 import hmac
+import json
 import time
 import re
 import tempfile
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,7 @@ from app.workflow.graph import workflow_app
 from app.vision import describe_image
 
 STATIC_DIR = PROJECT_ROOT / "app" / "web" / "static"
+SESSIONS_DIR = PROJECT_ROOT / "data" / "sessions"
 METHOD_LABELS = {
     "market_comparison": "市场比较法",
     "income": "收益法",
@@ -50,7 +53,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-Admin-Token"],
 )
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -115,6 +118,21 @@ class EvaluateRequest(BaseModel):
 
 
 class RagRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
+class SessionMessageRequest(EvaluateRequest):
+    message: str = Field(default="", max_length=5000)
+
+
+class SessionPatchRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=120)
+    fixed_fields: dict[str, Any] | None = None
+    layout_description: str | None = None
+    layout_filename: str | None = None
+
+
+class SessionRagRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
@@ -329,6 +347,161 @@ def _run_workflow(init: dict[str, Any]) -> AskResponse:
             if "report_json" in update:
                 report_json = str(update["report_json"])
     return AskResponse(answer=answer_text, steps=steps, report_json=report_json)
+
+
+def _session_path(session_id: str) -> Path:
+    if not re.fullmatch(r"[0-9a-f]{32}", session_id):
+        raise HTTPException(status_code=400, detail="非法会话编号。")
+    return SESSIONS_DIR / f"{session_id}.json"
+
+
+def _session_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _read_session(session_id: str) -> dict[str, Any]:
+    path = _session_path(session_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="会话不存在。")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=500, detail="会话数据无法读取。") from exc
+
+
+def _write_session(session: dict[str, Any]) -> None:
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    path = _session_path(session["id"])
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(session, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+
+
+def _session_summary(session: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": session["id"],
+        "title": session.get("title") or "未命名估价",
+        "updated_at": session.get("updated_at", ""),
+        "message_count": len(session.get("messages", [])),
+    }
+
+
+def _new_session() -> dict[str, Any]:
+    now = _session_now()
+    return {
+        "id": uuid.uuid4().hex,
+        "title": "新建估价会话",
+        "created_at": now,
+        "updated_at": now,
+        "fixed_fields": {},
+        "layout_description": "",
+        "layout_filename": "",
+        "messages": [],
+    }
+
+
+@app.get("/api/sessions")
+def list_sessions() -> list[dict[str, Any]]:
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    sessions = []
+    for path in SESSIONS_DIR.glob("*.json"):
+        try:
+            sessions.append(_session_summary(json.loads(path.read_text(encoding="utf-8"))))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return sorted(sessions, key=lambda item: item["updated_at"], reverse=True)
+
+
+@app.post("/api/sessions")
+def create_session() -> dict[str, Any]:
+    session = _new_session()
+    _write_session(session)
+    return session
+
+
+@app.get("/api/sessions/{session_id}")
+def get_session(session_id: str) -> dict[str, Any]:
+    return _read_session(session_id)
+
+
+@app.patch("/api/sessions/{session_id}")
+def patch_session(session_id: str, request: SessionPatchRequest) -> dict[str, Any]:
+    session = _read_session(session_id)
+    if request.title is not None:
+        session["title"] = request.title.strip() or "未命名估价"
+    if request.fixed_fields is not None:
+        session["fixed_fields"] = request.fixed_fields
+    if request.layout_description is not None:
+        session["layout_description"] = request.layout_description
+    if request.layout_filename is not None:
+        session["layout_filename"] = request.layout_filename
+    session["updated_at"] = _session_now()
+    _write_session(session)
+    return session
+
+
+@app.delete("/api/sessions/{session_id}")
+def delete_session(session_id: str) -> dict[str, bool]:
+    path = _session_path(session_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="会话不存在。")
+    path.unlink()
+    return {"deleted": True}
+
+
+@app.post("/api/sessions/{session_id}/messages")
+def add_session_message(session_id: str, request: SessionMessageRequest) -> dict[str, Any]:
+    session = _read_session(session_id)
+    fixed_fields = request.model_dump(exclude={"message"}, exclude_none=True)
+    message = request.message.strip() or request.note.strip()
+    if not message:
+        message = "请根据当前固定估价参数生成估值报告。"
+    session["fixed_fields"] = fixed_fields
+    if session.get("title") in {"新建估价会话", "未命名估价"}:
+        session["title"] = message[:36]
+    session["messages"].append({"role": "user", "kind": "message", "content": message, "created_at": _session_now()})
+    requirement = {
+        "property_usage": request.property_usage,
+        "area": request.area,
+        "layout": request.layout,
+        "building_age": request.building_age,
+        "orientation": request.orientation,
+        "floor": request.floor,
+        "decoration": request.decoration,
+        "location": request.location,
+        "valuation_purpose": request.valuation_purpose,
+        "valuation_date": request.valuation_date,
+        "known_data": _collect_known_data(request),
+        "missing_data": [],
+    }
+    workflow_request = request.model_copy(update={"note": message})
+    init = dict(WORKFLOW_INIT, question=_build_question(workflow_request), requirement=requirement)
+    result = _run_workflow(init)
+    assistant = {
+        "role": "assistant", "kind": "report", "content": result.answer,
+        "steps": result.steps, "report_json": result.report_json, "created_at": _session_now(),
+    }
+    session["messages"].append(assistant)
+    session["updated_at"] = _session_now()
+    _write_session(session)
+    return {"session": session, "message": assistant}
+
+
+@app.post("/api/sessions/{session_id}/rag")
+def add_session_rag(session_id: str, request: SessionRagRequest) -> dict[str, Any]:
+    session = _read_session(session_id)
+    now = _session_now()
+    session["messages"].append({
+        "role": "user", "kind": "rag_question", "content": request.question.strip(), "created_at": now,
+    })
+    answer = rag_answer(request.question.strip())
+    assistant = {
+        "role": "assistant", "kind": "rag_answer", "content": answer, "created_at": _session_now(),
+    }
+    session["messages"].append(assistant)
+    session["updated_at"] = _session_now()
+    _write_session(session)
+    return {"session": session, "message": assistant}
 
 
 def _collect_known_data(request: EvaluateRequest) -> dict[str, Any]:
