@@ -2,17 +2,19 @@ const API_BASE = (window.APP_API_BASE || "").replace(/\/$/, "");
 const apiUrl = (path) => `${API_BASE}${path}`;
 const $ = (selector) => document.querySelector(selector);
 let currentSession = null, presetSources = [], presetBasis = "", previewUrl = "";
+$("#login-form").hidden = false;
+$("#register-form").hidden = true;
 function escapeHtml(value) { return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function renderMarkdown(text) { return escapeHtml(text).replace(/^### (.+)$/gm, "<h3>$1</h3>").replace(/^## (.+)$/gm, "<h2>$1</h2>").replace(/^# (.+)$/gm, "<h1>$1</h1>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/^- (.+)$/gm, "<li>$1</li>").replace(/(?:<li>.*<\/li>\n?)+/g, (m) => `<ul>${m}</ul>`).replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>"); }
 function text(id) { return $(`#${id}`).value.trim(); }
 function number(id) { const value = text(id); return value ? Number(value) : null; }
 function payload(message = "") { return { property_usage: text("property_usage"), area: number("area"), layout: text("layout"), building_age: number("building_age"), orientation: text("orientation"), floor: text("floor"), decoration: text("decoration"), location: text("location"), valuation_purpose: text("valuation_purpose"), preset_year: number("preset_year"), comparable_price: null, net_income: null, cap_rate: null, land_value: null, replacement_cost: null, depreciation: null, preset_sources: presetSources, preset_basis: presetBasis, note: message }; }
-async function request(path, options = {}) { const response = await fetch(apiUrl(path), options); const data = await response.json(); if (!response.ok) throw new Error(data.detail || "请求失败"); return data; }
-function renderSessions(items) { const list = $("#session-list"); list.replaceChildren(...items.map((item) => { const row = document.createElement("div"); row.className = `session-row ${item.id === currentSession?.id ? "active" : ""}`; const button = document.createElement("button"); button.className = "session-item"; button.type = "button"; button.innerHTML = `<strong>${escapeHtml(item.title)}</strong><small>${item.message_count ? `${item.message_count} 条记录` : "暂无记录"}</small>`; button.onclick = () => loadSession(item.id); const remove = document.createElement("button"); remove.className = "session-delete"; remove.type = "button"; remove.title = "删除会话"; remove.setAttribute("aria-label", `删除会话：${item.title}`); remove.innerHTML = `<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>`; remove.onclick = async (event) => { event.stopPropagation(); if (!confirm("删除当前会话？")) return; await request(`/api/sessions/${item.id}`, { method: "DELETE" }); if (currentSession?.id === item.id) await createSession(); else await refreshSessions(); }; row.append(button, remove); return row; })); }
+async function request(path, options = {}) { const response = await fetch(apiUrl(path), { credentials: "include", ...options }); const data = await response.json(); if (!response.ok) throw new Error(data.detail || "请求失败"); return data; }
+function renderSessions(items) { const list = $("#session-list"); list.replaceChildren(...items.map((item) => { const row = document.createElement("div"); row.className = `session-row ${item.id === currentSession?.id ? "active" : ""}`; const button = document.createElement("button"); button.className = "session-item"; button.type = "button"; const lastQuestion = item.last_user_message || "暂无用户输入"; button.title = lastQuestion; button.innerHTML = `<strong>${escapeHtml(lastQuestion)}</strong><small>${item.message_count ? `${item.message_count} 条记录` : "暂无记录"}</small>`; button.onclick = () => loadSession(item.id); const remove = document.createElement("button"); remove.className = "session-delete"; remove.type = "button"; remove.title = "删除会话"; remove.setAttribute("aria-label", `删除会话：${lastQuestion}`); remove.innerHTML = `<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>`; remove.onclick = async (event) => { event.stopPropagation(); if (!confirm("删除当前会话？")) return; await request(`/api/sessions/${item.id}`, { method: "DELETE" }); if (currentSession?.id === item.id) await createSession(); else await refreshSessions(); }; row.append(button, remove); return row; })); }
 async function refreshSessions() { renderSessions(await request("/api/sessions")); }
 async function createSession() { currentSession = await request("/api/sessions", { method: "POST" }); renderSession(); await refreshSessions(); $("#message-input").focus(); }
 function messageMarkup(message) { const isKnowledge = message.kind === "rag_answer"; const isAssistant = message.role === "assistant"; const avatar = isKnowledge ? "知" : isAssistant ? "估" : "我"; const label = isKnowledge ? "知识库" : isAssistant ? "估价助手" : "你"; const content = isAssistant || isKnowledge ? renderMarkdown(message.content) : escapeHtml(message.content); return `<div class="message-avatar ${isKnowledge ? "knowledge-avatar" : isAssistant ? "assistant-avatar" : "user-avatar"}">${avatar}</div><div class="message-main"><div class="message-role">${label}</div><div class="message-content ${isKnowledge ? "knowledge-answer" : isAssistant ? "report" : "user-question"}">${content}</div></div>`; }
-function renderSession() { if (!currentSession) return; $("#session-title").textContent = currentSession.title; $("#message-list").replaceChildren(...currentSession.messages.map((message) => { const item = document.createElement("article"); item.className = `message ${message.role} ${message.kind || ""}`; item.innerHTML = messageMarkup(message); if (message.role === "assistant") { item.onclick = () => message.report_json && renderLatest(message); } return item; })); const last = [...currentSession.messages].reverse().find((message) => message.role === "assistant" && message.kind !== "rag_answer"); if (last) renderLatest(last); $("#message-list").scrollTop = $("#message-list").scrollHeight; }
+function renderSession() { if (!currentSession) return; $("#session-title").textContent = currentSession.title; const messages = currentSession.messages.map((message) => { const item = document.createElement("article"); item.className = `message ${message.role} ${message.kind || ""}`; item.innerHTML = messageMarkup(message); if (message.role === "assistant") { item.onclick = () => message.report_json && renderLatest(message); } return item; }); if (!messages.length) { const empty = document.createElement("div"); empty.className = "conversation-empty"; empty.innerHTML = "<strong>开始一次估价</strong><span>补充对象信息后生成报告，或先向知识库查询估价依据。</span>"; messages.push(empty); } $("#message-list").replaceChildren(...messages); const last = [...currentSession.messages].reverse().find((message) => message.role === "assistant" && message.kind !== "rag_answer"); if (last) renderLatest(last); $("#message-list").scrollTop = $("#message-list").scrollHeight; }
 function renderLatest(message) { $("#latest-steps").innerHTML = (message.steps || []).map((step, index) => `<div><b>${String(index + 1).padStart(2, "0")}</b>${escapeHtml(step.label || step.type || "执行步骤")}</div>`).join("") || "暂无执行步骤"; $("#latest-meta").textContent = message.created_at ? new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""; $("#report-json").textContent = message.report_json || "暂无 JSON 输出"; }
 function restoreFixedFields(fields = {}) { for (const [id, value] of Object.entries(fields)) { const field = $(`#${id}`); if (field && value !== null && value !== undefined && typeof value !== "object") field.value = value; } }
 async function loadSession(id) { currentSession = await request(`/api/sessions/${id}`); restoreFixedFields(currentSession.fixed_fields || {}); if (currentSession.layout_description) $("#layout-description").value = currentSession.layout_description; if (currentSession.layout_filename) $("#layout-filename").textContent = currentSession.layout_filename; renderSession(); await refreshSessions(); }
@@ -25,4 +27,54 @@ $("#layout-upload").onclick = () => $("#layout-file").click(); $("#layout-dropzo
 async function analyzeLayout(file) { if (!file || !/\.(png|jpe?g)$/i.test(file.name)) return; previewUrl = URL.createObjectURL(file); $("#layout-preview").src = previewUrl; $("#layout-preview").hidden = false; $("#layout-placeholder").hidden = true; $("#layout-remove").hidden = false; $("#layout-filename").textContent = file.name; $("#layout-status").textContent = "正在解析..."; try { const form = new FormData(); form.append("file", file); const data = await request("/api/analyze-layout", { method: "POST", body: form }); $("#layout-description").value = data.layout || ""; $("#layout-status").textContent = "解析完成，可编辑"; await syncFixedFields(); } catch (error) { $("#layout-status").textContent = error.message; } }
 $("#bottom-rag-form").onsubmit = async (event) => { event.preventDefault(); const question = text("bottom-rag-question"); if (!question || !currentSession) return; const button = $("#bottom-rag-submit"); button.disabled = true; $("#bottom-rag-status").textContent = "正在检索..."; try { const result = await request(`/api/sessions/${currentSession.id}/rag`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) }); currentSession = result.session; renderSession(); await refreshSessions(); $("#bottom-rag-question").value = ""; $("#bottom-rag-status").textContent = "检索完成"; } catch (error) { $("#bottom-rag-status").textContent = `检索失败：${error.message}`; } finally { button.disabled = false; } };
 $("#admin-entry").onclick = () => { $("#admin-entry-panel").hidden = false; $("#admin-entry-token").focus(); }; $("#admin-entry-fab").onclick = () => { $("#admin-entry-panel").hidden = false; $("#admin-entry-token").focus(); }; $("#admin-entry-form").onsubmit = async (event) => { event.preventDefault(); const token = text("admin-entry-token"); try { await request("/admin/access", { headers: { "X-Admin-Token": token } }); const destination = new URL("/admin", API_BASE || location.origin); destination.hash = new URLSearchParams({ access: token, return: location.origin }).toString(); location.assign(destination); } catch { $("#admin-entry-status").textContent = "管理密钥错误，请重新输入"; } };
+document.addEventListener("pointerdown", (event) => { const panel = $("#admin-entry-panel"); if (panel.hidden) return; if (!panel.contains(event.target) && !$("#admin-entry-fab").contains(event.target) && !$("#admin-entry").contains(event.target)) panel.hidden = true; });
 (async function init() { const sessions = await request("/api/sessions"); if (sessions.length) await loadSession(sessions[0].id); else await createSession(); })().catch((error) => { $("#message-list").textContent = `会话服务不可用：${error.message}`; });
+(async function authInit() {
+  const me = await request("/api/auth/me");
+  if (!me.authenticated) { $("#auth-gate").hidden = false; $("#app-shell").hidden = true; return; }
+  $("#auth-gate").hidden = true; $("#app-shell").hidden = false;
+  const isAdmin = me.role === "admin";
+  document.body.classList.toggle("admin-authorized", isAdmin);
+  $("#admin-entry").hidden = !isAdmin;
+  $("#admin-entry-fab").hidden = !isAdmin;
+  const knowledgeComposer = $(".knowledge-composer");
+  if (knowledgeComposer) knowledgeComposer.hidden = false;
+  const bottom = $(".sidebar-bottom");
+  if (bottom && !$("#account-bar")) {
+    const bar = document.createElement("div");
+    bar.id = "account-bar";
+    bar.className = "account-bar";
+    bar.innerHTML = "<span>" + escapeHtml(me.username) + "</span><button id=\"logout-button\" type=\"button\">退出</button>";
+    bottom.prepend(bar);
+    $("#logout-button").onclick = async () => { await request("/api/auth/logout", { method: "POST" }); location.reload(); };
+  }
+  const sessions = await request("/api/sessions");
+  if (sessions.length) await loadSession(sessions[0].id); else await createSession();
+})().catch((error) => { $("#login-status").textContent = error.message; });
+$("#login-form").onsubmit = async (event) => {
+  event.preventDefault();
+  const status = $("#login-status");
+  status.textContent = "正在登录...";
+  try {
+    await request("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: $("#login-username").value.trim(), password: $("#login-password").value }) });
+    location.assign("/");
+  } catch (error) { status.textContent = error.message; }
+};
+$("#show-register").onclick = () => { $("#login-form").hidden = true; $("#register-form").hidden = false; $("#register-username").focus(); };
+$("#show-login").onclick = () => { $("#register-form").hidden = true; $("#login-form").hidden = false; $("#login-username").focus(); };
+$("#register-form").onsubmit = async (event) => {
+  event.preventDefault();
+  const username = $("#register-username").value.trim();
+  const password = $("#register-password").value;
+  const confirmPassword = $("#register-confirm-password").value;
+  const status = $("#register-status");
+  if (password !== confirmPassword) { status.textContent = "两次输入的密码不一致。"; return; }
+  status.textContent = "正在创建账号...";
+  try {
+    await request("/api/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password, confirm_password: confirmPassword }) });
+    status.textContent = "注册成功，请登录。";
+    $("#register-form").reset();
+    $("#register-form").hidden = true; $("#login-form").hidden = false; $("#login-username").value = username; $("#login-password").focus();
+  } catch (error) { status.textContent = error.message; }
+};
+$("#admin-entry-form").onsubmit = async (event) => { event.preventDefault(); try { await request("/admin/access"); location.assign(new URL("/admin", API_BASE || location.origin)); } catch (error) { $("#admin-entry-status").textContent = error.message; } };

@@ -37,6 +37,7 @@ function formatBytes(bytes) {
 }
 
 function requireToken() {
+  return true;
   if (!tokenEl.value.trim()) {
     tokenEl.focus();
     throw new Error("请先输入管理凭证");
@@ -68,7 +69,7 @@ async function previewFile() {
   previewButton.disabled = true;
   setStatus("正在解析文档并生成切片预览...");
   try {
-    const response = await fetch(apiUrl("/admin/preview"), { method: "POST", headers: headers(), body: data });
+    const response = await fetch(apiUrl("/admin/preview"), { method: "POST", credentials: "include", headers: headers(), body: data });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || "预览失败");
     renderPreview(payload);
@@ -82,7 +83,7 @@ async function loadDocuments() {
   requireToken();
   loadButton.disabled = true;
   try {
-    const response = await fetch(apiUrl("/admin/documents"), { headers: headers() });
+    const response = await fetch(apiUrl("/admin/documents"), { credentials: "include", headers: headers() });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || "加载失败");
     documentCount.textContent = `${payload.length} 份`;
@@ -130,7 +131,7 @@ function renderDocument(item) {
 
 async function previewStoredDocument(source) {
   setStatus(`正在读取 ${source}...`);
-  const response = await fetch(apiUrl(`/admin/documents/${encodeURIComponent(source)}`), { headers: headers() });
+  const response = await fetch(apiUrl(`/admin/documents/${encodeURIComponent(source)}`), { credentials: "include", headers: headers() });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.detail || "预览失败");
   renderPreview(payload);
@@ -141,7 +142,7 @@ async function previewStoredDocument(source) {
 async function deleteDocument(source) {
   if (!window.confirm(`确定删除“${source}”并重建知识库？`)) return;
   setStatus("正在删除并重建向量库...");
-  const response = await fetch(apiUrl(`/admin/documents/${encodeURIComponent(source)}`), { method: "DELETE", headers: headers() });
+  const response = await fetch(apiUrl(`/admin/documents/${encodeURIComponent(source)}`), { method: "DELETE", credentials: "include", headers: headers() });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.detail || "删除失败");
   setStatus(`已删除 ${source}，当前向量片段 ${payload.vector_count} 条。`, "success");
@@ -166,7 +167,7 @@ form.addEventListener("submit", async (event) => {
     data.append("title", titleEl.value.trim());
     uploadButton.disabled = true;
     setStatus("正在解析文档并重建向量库...");
-    const response = await fetch(apiUrl("/admin/upload"), { method: "POST", headers: headers(), body: data });
+    const response = await fetch(apiUrl("/admin/upload"), { method: "POST", credentials: "include", headers: headers(), body: data });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || "上传失败");
     setStatus(`${payload.replaced ? "已更新" : "已入库"} ${payload.source}，当前向量片段 ${payload.vector_count} 条。`, "success");
@@ -180,6 +181,4 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-if (transferredToken) {
-  loadDocuments().catch((error) => setStatus(error.message, "error"));
-}
+loadDocuments().catch((error) => setStatus(error.message, "error"));

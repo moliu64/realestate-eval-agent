@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from functools import lru_cache
+import json
 from pathlib import Path
 import os
 
@@ -30,6 +31,7 @@ class Config:
     vision_api_key: str | None
     vision_model: str
     admin_token: str | None
+    auth_users: dict[str, dict[str, str]]
     cors_origins: tuple[str, ...]
     public_host: str
 
@@ -54,6 +56,22 @@ def load_config() -> Config:
     vision_api_key = os.getenv("VISION_API_KEY") or None
     vision_model = os.getenv("VISION_MODEL", "qwen-vl-plus")
     admin_token = os.getenv("ADMIN_TOKEN") or None
+    auth_users: dict[str, dict[str, str]] = {}
+    raw_users = os.getenv("AUTH_USERS_JSON", "{}").strip()
+    if raw_users:
+        try:
+            parsed_users = json.loads(raw_users)
+            if isinstance(parsed_users, dict):
+                auth_users = {
+                    str(username): {
+                        "password": str(details.get("password", "")),
+                        "role": str(details.get("role", "user")),
+                    }
+                    for username, details in parsed_users.items()
+                    if isinstance(details, dict) and details.get("password")
+                }
+        except json.JSONDecodeError as exc:
+            raise ValueError("AUTH_USERS_JSON 必须是合法 JSON。") from exc
     cors_origins = tuple(
         origin.strip()
         for origin in os.getenv(
@@ -80,6 +98,7 @@ def load_config() -> Config:
         vision_api_key=vision_api_key,
         vision_model=vision_model,
         admin_token=admin_token,
+        auth_users=auth_users,
         cors_origins=cors_origins,
         public_host=public_host,
     )

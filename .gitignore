@@ -9,6 +9,8 @@ venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+tmp/
+.playwright-cli/
 .mypy_cache/
 .ruff_cache/
 .coverage
@@ -18,14 +20,16 @@ dist/
 *.egg-info/
 
 # Runtime and generated artifacts
-data/vector_db/
-data/sessions/
+data/vector_db/*
+!data/vector_db/.gitkeep
+data/sessions/*
+!data/sessions/.gitkeep
+data/auth_users.json
 output/
 *.log
 
 # Local tooling and IDE state
 .npm-cache/
-.playwright-cli/
 .idea/
 .vscode/
 .DS_Store

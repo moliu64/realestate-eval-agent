@@ -2,7 +2,7 @@
 
 面向武汉房地产估价场景的 RAG + LangGraph 应用。系统将本地知识库、确定性估价工具、通义千问视觉模型和 OpenAI 兼容文本模型组合为可追踪的多方法估价工作流。
 
-在线地址：[https://060115.top](https://060115.top)
+部署地址（按需启用）：[https://060115.top](https://060115.top)
 
 > 在线环境通过 Cloudflare Tunnel 连接当前电脑。电脑关机、休眠或断网时，网站会离线。
 
@@ -49,7 +49,8 @@ VISION_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 VISION_API_KEY=你的DashScope密钥
 VISION_MODEL=qwen-vl-plus
 
-ADMIN_TOKEN=自定义高强度管理密钥
+ADMIN_TOKEN=兼容旧配置的管理密钥（管理页以登录角色为准）
+AUTH_USERS_JSON={"admin":{"password":"更换为管理员密码","role":"admin"},"analyst":{"password":"更换为普通用户密码","role":"user"}}
 ```
 
 `.env` 已被 Git 忽略，不应提交模型密钥、管理密钥或其它凭证。
@@ -91,6 +92,8 @@ python run_web.py
 
 首页支持三栏估价工作台：左侧管理可持久化会话，中间进行多轮估价对话，右侧上传并查看户型图解析。会话数据保存在本地 `data/sessions/`，该目录已加入忽略规则，不会进入版本库。
 
+会话按登录账号隔离：后端通过 HttpOnly Cookie 维护登录态，并将会话归属绑定到账号。列表、读取、修改、删除、估价和知识库问答接口均校验会话归属，不同账号无法互相读取会话；生产环境应继续使用 HTTPS，并将会话目录配置为仅服务进程可读写。
+
 ### 前后端独立运行
 
 Windows 下先双击 `start_backend.bat`，再双击 `start_frontend.bat`：
@@ -115,11 +118,13 @@ python run_frontend.py
 .\start_online.bat
 ```
 
-Windows 登录任务 `RealEstateAgentOnline` 会自动执行同一脚本。详细拓扑、凭证位置和故障检查见 [Cloudflare 部署文档](docs/deployment/CLOUDFLARE.md)。
+当前线上服务默认关闭。需要上线时手动执行 `start_online.bat`；如需开机自动运行，再按 [Cloudflare 部署文档](docs/deployment/CLOUDFLARE.md) 配置 Windows 任务计划。详细拓扑、凭证位置和故障检查也见该文档。
 
 ## 知识库管理
 
-点击估值首页右下角“管理入口”，输入 `.env` 中的 `ADMIN_TOKEN` 后进入管理页。
+首次进入估价工作台需要登录。账号由 `.env` 中的 `AUTH_USERS_JSON` 配置；只有 `role=admin` 的账号会显示并可访问 RAG 知识库管理入口。普通用户可以使用 RAG 检索和估价工作流中的知识依据，但不能访问文档上传、删除、切片预览、向量库重建等管理接口。生产环境请使用强密码并启用 HTTPS。
+
+登录页支持注册普通用户账号。用户名长度为 3-80 个字符且不可重复，密码长度至少 8 位，注册时必须两次输入一致。注册账号保存在 `data/auth_users.json`，管理员账号仍只从 `.env` 配置，不允许通过注册页创建。
 
 管理页支持：
 
@@ -196,7 +201,8 @@ understand -> plan -> next_method -> retrieve -> compute
 │   └── workflow/             # 多方法 LangGraph 工作流
 ├── data/
 │   ├── docs/                 # 生产 RAG 知识文档
-│   └── vector_db/            # 本地生成，不提交 Git
+│   ├── sessions/              # 运行时会话，不提交 Git
+│   └── vector_db/             # 本地生成，不提交 Git
 ├── docs/
 │   ├── deployment/           # 部署与运维文档
 │   ├── plans/                # 历史实施计划
@@ -213,6 +219,10 @@ understand -> plan -> next_method -> retrieve -> compute
 ```
 
 历史计划与评审索引见 [docs/README.md](docs/README.md)。
+
+## GitHub 同步说明
+
+仓库只提交源代码、测试、知识文档和部署文档。以下内容由本地运行生成或包含敏感信息，已通过 `.gitignore` 排除：`.env`、`.venv/`、`data/sessions/`、`data/vector_db/`、`data/auth_users.json`、Python 缓存和临时目录。克隆仓库后按“快速开始”配置环境，再按“构建知识库”生成本地向量库。
 
 ## 数据说明
 

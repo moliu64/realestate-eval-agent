@@ -1,14 +1,17 @@
 import hmac
+import hashlib
 import json
+import secrets
 import time
 import re
 import tempfile
 import uuid
+from threading import Lock
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,6 +28,11 @@ from app.vision import describe_image
 
 STATIC_DIR = PROJECT_ROOT / "app" / "web" / "static"
 SESSIONS_DIR = PROJECT_ROOT / "data" / "sessions"
+SESSION_OWNER_COOKIE = "realestate_session_owner"
+AUTH_COOKIE = "realestate_auth"
+AUTH_SESSIONS: dict[str, dict[str, Any]] = {}
+AUTH_USERS_FILE = PROJECT_ROOT / "data" / "auth_users.json"
+AUTH_USERS_LOCK = Lock()
 METHOD_LABELS = {
     "market_comparison": "市场比较法",
     "income": "收益法",
@@ -52,7 +60,7 @@ _public_host = load_config().public_host
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-Admin-Token"],
 )
@@ -92,6 +100,17 @@ async def prevent_stale_frontend_assets(request: Request, call_next):
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=80, pattern=r"^[A-Za-z0-9_\u4e00-\u9fff-]+$")
+    password: str = Field(min_length=8, max_length=200)
+    confirm_password: str = Field(min_length=1, max_length=200)
 
 
 class EvaluateRequest(BaseModel):
@@ -148,31 +167,76 @@ def index() -> FileResponse:
 
 
 @app.get("/admin")
-def admin_index() -> FileResponse:
+def admin_index(request: Request) -> FileResponse:
+    _require_admin(request)
     return FileResponse(STATIC_DIR / "admin.html")
 
 
 @app.get("/admin/access")
-def admin_access(x_admin_token: str | None = Header(default=None)) -> dict[str, bool]:
-    _require_admin(x_admin_token)
-    return {"authorized": True}
+def admin_access(request: Request) -> dict[str, Any]:
+    principal = _require_admin(request)
+    return {"authorized": True, "username": principal["username"], "role": principal["role"]}
+
+
+@app.post("/api/auth/login")
+def login(payload: LoginRequest, request: Request, response: Response) -> dict[str, Any]:
+    account = _find_auth_user(payload.username)
+    if not account or not _verify_password(payload.password, account.get("password", "")):
+        raise HTTPException(status_code=401, detail="用户名或密码错误。")
+    token = secrets.token_urlsafe(32)
+    AUTH_SESSIONS[token] = {
+        "username": payload.username,
+        "role": account.get("role", "user") if account.get("role") in {"admin", "user"} else "user",
+        "expires_at": time.time() + 7 * 86400,
+    }
+    response.set_cookie(AUTH_COOKIE, token, httponly=True, samesite="lax", secure=request.url.scheme == "https", max_age=7 * 86400)
+    return {"authenticated": True, **AUTH_SESSIONS[token]}
+
+
+@app.post("/api/auth/register")
+def register(payload: RegisterRequest) -> dict[str, Any]:
+    username = payload.username.strip()
+    if payload.password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="两次输入的密码不一致。")
+    with AUTH_USERS_LOCK:
+        if _find_auth_user(username):
+            raise HTTPException(status_code=409, detail="用户名已存在，请更换用户名。")
+        users = _load_registered_users()
+        users[username] = {"password": _hash_password(payload.password), "role": "user"}
+        _save_registered_users(users)
+    return {"registered": True, "username": username, "role": "user"}
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request, response: Response) -> dict[str, bool]:
+    AUTH_SESSIONS.pop(request.cookies.get(AUTH_COOKIE, ""), None)
+    response.delete_cookie(AUTH_COOKIE)
+    response.delete_cookie(SESSION_OWNER_COOKIE)
+    return {"logged_out": True}
+
+
+@app.get("/api/auth/me")
+def auth_me(request: Request) -> dict[str, Any]:
+    principal = _auth_principal(request, required=False)
+    return {"authenticated": bool(principal), **(principal or {})}
 
 
 @app.post("/admin/preview")
-async def admin_preview(file: UploadFile = File(...), x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
-    _require_admin(x_admin_token)
+async def admin_preview(request: Request, file: UploadFile = File(...), x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
+    _require_admin(request)
     content, suffix = await _read_upload(file)
     return _preview_content(content, suffix, Path(file.filename or "document").name)
 
 
 @app.post("/admin/upload")
 async def admin_upload(
+    request: Request,
     file: UploadFile = File(...),
     category: str = Form(default="用户资料"),
     title: str = Form(default=""),
     x_admin_token: str | None = Header(default=None),
 ) -> dict[str, Any]:
-    _require_admin(x_admin_token)
+    _require_admin(request)
     content, suffix = await _read_upload(file)
     if category not in DOCUMENT_CATEGORIES:
         raise HTTPException(status_code=400, detail="无效的文档分类。")
@@ -197,8 +261,8 @@ async def admin_upload(
 
 
 @app.get("/admin/documents")
-def admin_documents(x_admin_token: str | None = Header(default=None)) -> list[dict[str, Any]]:
-    _require_admin(x_admin_token)
+def admin_documents(request: Request, x_admin_token: str | None = Header(default=None)) -> list[dict[str, Any]]:
+    _require_admin(request)
     docs_dir = Path(load_config().docs_dir)
     documents = []
     for path in sorted(docs_dir.iterdir()) if docs_dir.exists() else []:
@@ -215,8 +279,8 @@ def admin_documents(x_admin_token: str | None = Header(default=None)) -> list[di
 
 
 @app.get("/admin/documents/{source}")
-def admin_document_preview(source: str, x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
-    _require_admin(x_admin_token)
+def admin_document_preview(source: str, request: Request, x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
+    _require_admin(request)
     target = _document_target(source)
     if not target.exists():
         raise HTTPException(status_code=404, detail="文档不存在。")
@@ -225,8 +289,8 @@ def admin_document_preview(source: str, x_admin_token: str | None = Header(defau
 
 
 @app.delete("/admin/documents/{source}")
-def admin_delete(source: str, x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
-    _require_admin(x_admin_token)
+def admin_delete(source: str, request: Request, x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
+    _require_admin(request)
     target = _document_target(source)
     if not target.exists():
         raise HTTPException(status_code=404, detail="文档不存在。")
@@ -304,7 +368,76 @@ def _preview_document(document) -> dict[str, Any]:
     }
 
 
-def _require_admin(token: str | None) -> None:
+def _require_admin(request: Request) -> dict[str, Any]:
+    principal = _auth_principal(request)
+    if principal["role"] != "admin":
+        raise HTTPException(status_code=403, detail="只有管理员可以管理知识库。")
+    return principal
+
+
+def _load_registered_users() -> dict[str, dict[str, str]]:
+    if not AUTH_USERS_FILE.exists():
+        return {}
+    try:
+        payload = json.loads(AUTH_USERS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=500, detail="注册账号数据无法读取。") from exc
+    return {
+        str(username): {"password": str(details.get("password", "")), "role": "user"}
+        for username, details in payload.items()
+        if isinstance(details, dict) and details.get("password")
+    } if isinstance(payload, dict) else {}
+
+
+def _save_registered_users(users: dict[str, dict[str, str]]) -> None:
+    AUTH_USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = AUTH_USERS_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(users, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(AUTH_USERS_FILE)
+
+
+def _find_auth_user(username: str) -> dict[str, str] | None:
+    target = username.strip().casefold()
+    configured = load_config().auth_users
+    for candidate, account in configured.items():
+        if candidate.casefold() == target:
+            return account
+    for candidate, account in _load_registered_users().items():
+        if candidate.casefold() == target:
+            return account
+    return None
+
+
+def _hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 260_000)
+    return f"pbkdf2_sha256$260000${salt.hex()}${digest.hex()}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    if stored.startswith("pbkdf2_sha256$"):
+        try:
+            _, rounds_text, salt_hex, digest_hex = stored.split("$", 3)
+            digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(rounds_text))
+            return hmac.compare_digest(digest.hex(), digest_hex)
+        except (ValueError, TypeError):
+            return False
+    return bool(stored) and hmac.compare_digest(stored, password)
+
+
+def _auth_principal(request: Request, required: bool = True) -> dict[str, Any] | None:
+    token = request.cookies.get(AUTH_COOKIE, "")
+    principal = AUTH_SESSIONS.get(token)
+    if principal and principal["expires_at"] <= time.time():
+        AUTH_SESSIONS.pop(token, None)
+        principal = None
+    if required and not principal:
+        raise HTTPException(status_code=401, detail="请先登录。")
+    return principal
+
+
+'''legacy token check retained below only as dead documentation'''
+def _legacy_require_admin(token: str | None) -> None:
     configured = load_config().admin_token
     if not configured or not token or not hmac.compare_digest(token, configured):
         raise HTTPException(status_code=401, detail="需要有效的 X-Admin-Token。")
@@ -359,12 +492,20 @@ def _session_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _read_session(session_id: str) -> dict[str, Any]:
+def _owner_id(request: Request, response: Response) -> str:
+    principal = _auth_principal(request)
+    return f"user:{principal['username']}"
+
+
+def _read_session(session_id: str, owner_id: str) -> dict[str, Any]:
     path = _session_path(session_id)
     if not path.exists():
         raise HTTPException(status_code=404, detail="会话不存在。")
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        session = json.loads(path.read_text(encoding="utf-8"))
+        if session.get("owner_id") != owner_id:
+            raise HTTPException(status_code=404, detail="会话不存在。")
+        return session
     except (OSError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=500, detail="会话数据无法读取。") from exc
 
@@ -378,18 +519,21 @@ def _write_session(session: dict[str, Any]) -> None:
 
 
 def _session_summary(session: dict[str, Any]) -> dict[str, Any]:
+    user_messages = [message.get("content", "") for message in session.get("messages", []) if message.get("role") == "user"]
     return {
         "id": session["id"],
         "title": session.get("title") or "未命名估价",
         "updated_at": session.get("updated_at", ""),
         "message_count": len(session.get("messages", [])),
+        "last_user_message": user_messages[-1] if user_messages else "暂无用户输入",
     }
 
 
-def _new_session() -> dict[str, Any]:
+def _new_session(owner_id: str) -> dict[str, Any]:
     now = _session_now()
     return {
         "id": uuid.uuid4().hex,
+        "owner_id": owner_id,
         "title": "新建估价会话",
         "created_at": now,
         "updated_at": now,
@@ -401,32 +545,35 @@ def _new_session() -> dict[str, Any]:
 
 
 @app.get("/api/sessions")
-def list_sessions() -> list[dict[str, Any]]:
+def list_sessions(request: Request, response: Response) -> list[dict[str, Any]]:
+    owner_id = _owner_id(request, response)
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     sessions = []
     for path in SESSIONS_DIR.glob("*.json"):
         try:
-            sessions.append(_session_summary(json.loads(path.read_text(encoding="utf-8"))))
+            session = json.loads(path.read_text(encoding="utf-8"))
+            if session.get("owner_id") == owner_id:
+                sessions.append(_session_summary(session))
         except (OSError, json.JSONDecodeError):
             continue
     return sorted(sessions, key=lambda item: item["updated_at"], reverse=True)
 
 
 @app.post("/api/sessions")
-def create_session() -> dict[str, Any]:
-    session = _new_session()
+def create_session(request: Request, response: Response) -> dict[str, Any]:
+    session = _new_session(_owner_id(request, response))
     _write_session(session)
     return session
 
 
 @app.get("/api/sessions/{session_id}")
-def get_session(session_id: str) -> dict[str, Any]:
-    return _read_session(session_id)
+def get_session(session_id: str, request: Request, response: Response) -> dict[str, Any]:
+    return _read_session(session_id, _owner_id(request, response))
 
 
 @app.patch("/api/sessions/{session_id}")
-def patch_session(session_id: str, request: SessionPatchRequest) -> dict[str, Any]:
-    session = _read_session(session_id)
+def patch_session(session_id: str, request: SessionPatchRequest, http_request: Request, response: Response) -> dict[str, Any]:
+    session = _read_session(session_id, _owner_id(http_request, response))
     if request.title is not None:
         session["title"] = request.title.strip() or "未命名估价"
     if request.fixed_fields is not None:
@@ -441,17 +588,16 @@ def patch_session(session_id: str, request: SessionPatchRequest) -> dict[str, An
 
 
 @app.delete("/api/sessions/{session_id}")
-def delete_session(session_id: str) -> dict[str, bool]:
-    path = _session_path(session_id)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="会话不存在。")
+def delete_session(session_id: str, request: Request, response: Response) -> dict[str, bool]:
+    session = _read_session(session_id, _owner_id(request, response))
+    path = _session_path(session["id"])
     path.unlink()
     return {"deleted": True}
 
 
 @app.post("/api/sessions/{session_id}/messages")
-def add_session_message(session_id: str, request: SessionMessageRequest) -> dict[str, Any]:
-    session = _read_session(session_id)
+def add_session_message(session_id: str, request: SessionMessageRequest, http_request: Request, response: Response) -> dict[str, Any]:
+    session = _read_session(session_id, _owner_id(http_request, response))
     fixed_fields = request.model_dump(exclude={"message"}, exclude_none=True)
     message = request.message.strip() or request.note.strip()
     if not message:
@@ -488,8 +634,8 @@ def add_session_message(session_id: str, request: SessionMessageRequest) -> dict
 
 
 @app.post("/api/sessions/{session_id}/rag")
-def add_session_rag(session_id: str, request: SessionRagRequest) -> dict[str, Any]:
-    session = _read_session(session_id)
+def add_session_rag(session_id: str, request: SessionRagRequest, http_request: Request, response: Response) -> dict[str, Any]:
+    session = _read_session(session_id, _owner_id(http_request, response))
     now = _session_now()
     session["messages"].append({
         "role": "user", "kind": "rag_question", "content": request.question.strip(), "created_at": now,
@@ -613,7 +759,8 @@ async def analyze_layout(file: UploadFile = File(...)) -> dict[str, str]:
 
 
 @app.post("/api/rag")
-def rag(request: RagRequest) -> dict[str, str]:
+def rag(request: RagRequest, http_request: Request) -> dict[str, str]:
+    _auth_principal(http_request)
     return {"answer": rag_answer(request.question.strip())}
 
 
