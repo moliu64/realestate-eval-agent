@@ -34,3 +34,6 @@ output/
 .vscode/
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
+.python-version
