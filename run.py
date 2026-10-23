@@ -3,6 +3,8 @@
 Usage examples::
 
     python run.py                 # start the web workspace (same as: python run.py web)
+    python run.py panel           # open the local one-click launcher panel
+    python run.py status          # print local runtime status as JSON
     python run.py web --reload    # start with auto-reload for development
     python run.py index           # rebuild the local Chroma vector index
     python run.py eval "帮我评估一套..."   # run the LangGraph workflow in the terminal
@@ -14,6 +16,7 @@ Usage examples::
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sys
 
@@ -78,6 +81,18 @@ def _command_agent(args: argparse.Namespace) -> None:
     print(str(result.get("answer", "")).replace("−", "-"))
 
 
+def _command_status(args: argparse.Namespace) -> None:
+    from app.local_runtime import collect_status
+
+    print(json.dumps(collect_status().as_dict(), ensure_ascii=False, indent=2))
+
+
+def _command_panel(args: argparse.Namespace) -> None:
+    import launcher
+
+    launcher.run()
+
+
 def _command_check(args: argparse.Namespace) -> None:
     from app.config import load_config
     from app.rag.loader import load_docs
@@ -115,6 +130,12 @@ def build_parser() -> argparse.ArgumentParser:
     web = subparsers.add_parser("web", help="启动 Web 工作台（默认）")
     web.add_argument("--reload", action="store_true", help="开发模式：代码变更自动重载")
     web.set_defaults(handler=_command_web)
+
+    panel = subparsers.add_parser("panel", help="打开本地一键启动面板")
+    panel.set_defaults(handler=_command_panel)
+
+    status = subparsers.add_parser("status", help="输出本地运行状态（JSON）")
+    status.set_defaults(handler=_command_status)
 
     index = subparsers.add_parser("index", help="重建本地向量索引")
     index.set_defaults(handler=_command_index)

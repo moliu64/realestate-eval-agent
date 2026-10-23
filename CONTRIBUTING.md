@@ -29,11 +29,11 @@ Copy-Item .env.example .env
 统一入口是 `run.py`（`web` 为默认子命令）：
 
 ```powershell
-# 测试（标准库 unittest，当前 33 个用例）
+# 测试（标准库 unittest，当前 37 个用例）
 python -m unittest discover -s tests -v
 
-# 字节编译
-python -m compileall -q app run.py tests scripts
+# 字节编译（CI 同样覆盖 launcher.py）
+python -m compileall -q app run.py launcher.py tests scripts
 
 # 前端语法
 node --check app/web/static/app.js
@@ -46,6 +46,8 @@ python run.py check --llm
 
 # 手工冒烟
 python run.py web
+python run.py panel       # 打开本地启动面板
+python run.py status      # 输出本地运行状态 JSON
 python run.py eval "帮我评估一套100平方米二手住宅，有近期可比成交单价20000元/平方米"
 python run.py rag "收益法的资本化率怎么确定"
 
@@ -72,6 +74,8 @@ python -m unittest tests.test_workflow tests.test_agent -v
 | `app/rag/` | 文档与检索 | 文档处理、切片、向量库、检索链各自独立；不要绕过 `knowledge_service` 直接改知识库 |
 | `app/main.py` | 应用装配 | 只做路由注册、异常映射与跨切面中间件 |
 | `app/web/static/` | 前端 | 原生 HTML/CSS/JS，同源调用 `/api/*`；不要引入独立前端服务或跨域配置 |
+| `launcher.py` | 本地启动面板 | Tkinter 标准库实现；只管理自己启动的服务进程，状态读取复用 `app/local_runtime.py` |
+| `app/local_runtime.py` | 本地状态 | 仅标准库，不导入 Tkinter 或模型；供面板、`run.py status` 与测试复用 |
 
 其他约定：
 
@@ -79,15 +83,18 @@ python -m unittest tests.test_workflow tests.test_agent -v
 - 新增环境变量必须同步 `.env.example`、`app/config.py`、README 配置表和 `docs/ARCHITECTURE.md`。
 - 认证、登录态与密码逻辑集中在 `app/services/auth_store.py`，不要在路由里重复实现。
 - 保持 `app/server.py` 仅为兼容入口（`from app.main import app`）。
+- 本项目定位为**纯本地运行**：不要引入域名、隧道、公网部署或反向代理相关配置；如需对外访问，应作为独立扩展并明确风险。
+- 修改启动方式或新增 CLI 子命令时，同步更新 `run.py` 的帮助文本、README 与 `docs/ARCHITECTURE.md`。
 - 历史文档 `docs/plans/`、`docs/reviews/` 是决策记录，不随实现回写；当前行为以 README 和源码为准。
 
 ## 测试要求
 
 - 新增计算逻辑：在 `tests/test_tools.py` 或 `tests/test_workflow.py` 覆盖正常值与边界值。
 - 新增接口：在 `tests/test_api.py` 使用 Starlette `TestClient` 覆盖成功、未登录、越权与非法参数路径，测试数据写入临时目录，不依赖真实模型。
+- 修改本地状态读取或启动面板逻辑：在 `tests/test_local_runtime.py` 覆盖文档计数、向量计数、服务探测与 URL；面板交互本身需按「本地检查」手工冒烟。
 - 涉及认证、会话隔离、RAG 权限或上传管理的改动，至少覆盖「未登录 / 普通用户 / 管理员」三类场景。
 - 不要为了让测试通过而放宽 `skip` 条件；检索与 LLM 用例的跳过是 CI 友好设计。
-- CI 会执行 `compileall`、`node --check` 和 `python -m unittest discover -s tests -v`，PR 前请在本地跑通。
+- CI 会执行 `compileall`（含 `launcher.py`）、`node --check` 和 `python -m unittest discover -s tests -v`，PR 前请在本地跑通。
 
 ## 文档与素材
 
@@ -100,9 +107,10 @@ python -m unittest tests.test_workflow tests.test_agent -v
 
 - [ ] 变更范围聚焦，未混入无关重构或格式化噪声。
 - [ ] `python -m unittest discover -s tests -v` 通过，新增行为有测试覆盖。
-- [ ] `python -m compileall -q app run.py tests scripts` 通过。
+- [ ] `python -m compileall -q app run.py launcher.py tests scripts` 通过。
 - [ ] 前端改动通过 `node --check app/web/static/app.js`、`node --check app/web/static/admin.js` 与 `node --check app/web/static/ui.js`。
 - [ ] `python run.py check` 通过；涉及界面时本地启动 `python run.py web` 验证关键流程。
+- [ ] 涉及启动面板时，`python run.py panel` 与 `python run.py status` 手工冒烟通过。
 - [ ] 新增/修改接口、配置、入口已同步到 README、`docs/API_ENDPOINTS.md`、`docs/ARCHITECTURE.md`。
 - [ ] 未提交任何密钥、会话数据、账号文件、向量库或本机路径。
 - [ ] PR 描述包含动机、改动摘要、测试结果和已知限制。

@@ -10,9 +10,16 @@
 
 提交前请删除 `.env` 中的真实密钥，通过仓库的私密渠道联系维护者，并说明影响范围、复现步骤和建议修复方式。我们会先确认问题、评估影响，再协商披露时间。
 
+## 本地运行边界
+
+- 本项目定位为**纯本地运行**：Web 服务默认只监听 `127.0.0.1:8000`，知识库、会话、账号与向量索引都在本机；模型调用只发往 `.env` 中配置的 API 端点。
+- 仓库不包含域名、隧道、反向代理或公网部署逻辑；不要将端口暴露到公网，也不要通过端口映射让外部设备直接访问。
+- 如确需从其他设备访问，请自行增加 TLS、反向代理、鉴权与限流，并自行承担由此带来的安全风险；这不属于本项目默认支持的使用方式。
+- 本地运行也不等于绝对安全：同一台机器上的其他账号、恶意软件或共享桌面会话仍可能读取 `.env` 与数据目录，需要操作系统层面的访问控制。
+
 ## 认证与会话
 
-- 认证使用 HttpOnly Cookie `realestate_auth`，`SameSite=Lax`；HTTPS 请求自动加 `Secure`；有效期 7 天。
+- 认证使用 HttpOnly Cookie `realestate_auth`，`SameSite=Lax`；本地 HTTP 下不启用 `Secure`，如经 HTTPS 访问会自动启用；有效期 7 天。
 - 登录 token 为 `secrets.token_urlsafe(32)` 生成的不透明随机串，保存在**服务进程内存**；服务重启后全部失效。
 - 角色只有 `admin` 和 `user`。管理员账号只能来自 `.env` 的 `AUTH_USERS_JSON`，注册页只能创建普通用户。
 - 注册用户密码使用 PBKDF2-SHA256、260,000 轮、16 字节随机盐存储，校验使用常量时间比较。
@@ -25,41 +32,40 @@
 - 会话文件以 `owner_id = user:<username>` 标记；列表、读取、更新、删除前都校验所有者，越权统一返回 `404`。
 - 未登录访问会话接口返回 `401`；`GET /admin` 对非管理员（未登录或普通用户）返回 `302` 跳转 `/`，其余 `/admin/*` JSON 管理接口未登录返回 `401`、普通用户返回 `403`。
 - 知识库上传、预览、删除与向量库重建仅管理员可操作。
-- 当前 `/api/evaluate`、`/api/ask`、`/api/presets/*`、`/api/analyze-layout`、`/api/auth/*`、`/api/health` 为公开接口；对外部署前应改为登录后调用并限流。
+- 当前 `/api/evaluate`、`/api/ask`、`/api/presets/*`、`/api/analyze-layout`、`/api/auth/*`、`/api/health` 为公开接口；本项目仅建议在本机使用，不要直接暴露到公网。
 
 ## 数据与密钥保护
 
-- 真实密钥只放 `.env` 或部署平台密钥管理，不写入仓库、镜像、日志或前端代码；`.env` 已被 `.gitignore` 忽略。
-- 以下运行时数据不提交、不对外提供静态访问：`data/sessions/`、`data/auth_users.json`、`data/vector_db/`、`data/docs/` 中的非公开资料。
-- 生产环境应限制数据目录文件权限，仅允许运行服务的账号读写，并定期备份。
-- 日志默认不打印密钥、Cookie、密码或完整会话内容；排查问题时不要把上述信息贴入 Issue。
+- 真实密钥只放 `.env`，不写入仓库、日志或前端代码；`.env` 已被 `.gitignore` 忽略。
+- 以下运行时数据不提交、不对外提供静态访问：`data/sessions/`、`data/auth_users.json`、`data/vector_db/`、`data/docs/` 中的非公开资料、`data/launcher-error.log`。
+- 本地多用户或共享机器上，应限制项目目录与数据目录的文件权限，仅允许运行服务的账号读写。
+- 日志默认不打印密钥、Cookie、密码或完整会话内容；面板异常日志可能包含本机路径与堆栈，排查后不要把完整日志连同 `.env` 一起公开。
+- 定期备份 `data/docs/`、`data/sessions/`、`data/auth_users.json`，并确保备份文件同样受访问控制。
 
-## 输入、上传与 HTTP 安全
+## 输入、上传与本地 HTTP 安全
 
 - 上传白名单：`.md`、`.txt`、`.csv`、`.pdf`、`.docx`、`.png`、`.jpg`、`.jpeg`。
 - 上传大小由 `MAX_UPLOAD_MB` 控制（默认 20MB），超限返回 `413`；读取时最多读取 `限制 + 1` 字节。
 - 文件名会去除路径分隔符并校验最终路径必须位于 `DOCS_DIR` 内，防止路径穿越；非法来源返回 `400`。
 - 管理端上传/删除会同步重建向量库，失败时恢复原文件并尽力重建，避免文件与索引不一致。
-- 统一安全响应头：CSP、`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: same-origin`、`Permissions-Policy`；HTTPS 下额外下发 HSTS。
-- 配置 `PUBLIC_HOST` 后，命中该域名的普通 HTTP 请求会 308 跳转到 HTTPS。
-- 静态资源长缓存，HTML 页面 `no-cache`，避免旧页面引用已删除接口。
+- 统一安全响应头：CSP（`script-src 'self'`、`connect-src 'self'`）、`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: same-origin`、`Permissions-Policy`。
+- 缓存策略：静态资源长缓存，HTML 页面 `no-cache`，API 与 `/admin/` 响应 `no-store`，避免旧页面或敏感响应被缓存。
 
-## 生产加固清单
+## 本地运行加固清单
 
-- [ ] 使用 HTTPS，生产环境不要直接暴露 Uvicorn 端口（Cloudflare Tunnel 或反向代理终止 TLS）。
+- [ ] 保持 `APP_HOST=127.0.0.1`，不要改为 `0.0.0.0`，也不要把端口转发到局域网或公网。
 - [ ] 更换 `AUTH_USERS_JSON` 中的默认密码，使用强随机值；定期轮换模型 API Key。
-- [ ] 公网入口增加限流（Cloudflare / 反向代理）、Bot 防护与模型额度告警。
-- [ ] 增加登录、估价、知识库变更的审计日志与异常告警。
-- [ ] 将公开的估价与解析接口改为登录后调用，或单独做配额控制。
-- [ ] 定期备份 `data/docs/`、`data/sessions/`、`data/auth_users.json`，并验证恢复流程。
+- [ ] 确认 `.env`、`data/auth_users.json`、`data/sessions/`、`data/vector_db/` 未提交到 Git，且本机文件权限合理。
 - [ ] 单进程运行；在完成认证与存储改造前不要启用多 worker 或多实例。
 - [ ] 及时更新依赖，关注 `requirements.txt` / `requirements.lock` 中的安全公告。
+- [ ] 定期备份知识文档与会话数据，并验证恢复流程。
 - [ ] 确认日志、错误响应和前端页面不泄露密钥、Cookie、堆栈或本机绝对路径。
+- [ ] 如自行增加外部访问能力，必须在入口补齐 TLS、强鉴权、限流与审计，并重新评估模型额度风险。
 
 ## 已知边界
 
 - 登录态在内存、会话与账号是本地 JSON：服务重启会丢失登录态，且不适合多实例部署。
-- 项目内置无速率限制、无 CSRF Token、无审计表；公网部署前必须在网关层补齐。
-- `SameSite=Lax` 的 Cookie 依赖同源部署；项目没有 CORS 配置，不应把 API 暴露给其他来源的页面。
+- 项目内置无速率限制、无 CSRF Token、无审计表；只适合本机单用户使用。
 - 模型供应商会接收提交的估价文本与检索上下文；涉及敏感资料时应先做脱敏或改用私有部署模型。
 - 武汉区域预设与估价报告是演示与流程验证结果，不构成正式估价结论。
+- 启动面板依赖桌面环境与 Tkinter，只管理由它自己启动的服务进程，不提供系统服务或后台守护能力。

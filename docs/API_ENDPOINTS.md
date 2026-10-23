@@ -4,6 +4,8 @@
 
 本地默认地址：`http://127.0.0.1:8000`。前端由同一 FastAPI 进程同源提供，页面内使用相对路径调用 `/api/*`，不涉及跨域和独立前端服务。
 
+本项目为**纯本地运行**：服务只监听 `127.0.0.1`，不包含域名、隧道或公网部署逻辑。本地启动面板与 `python run.py status` 通过 `GET /api/health` 判断服务状态。如需从其他设备访问，需自行增加 TLS、反向代理与限流并承担风险。
+
 - 请求与响应均为 JSON，上传接口为 `multipart/form-data`。
 - 错误响应统一为：
 
@@ -23,7 +25,7 @@
 | Cookie 名称 | `realestate_auth` |
 | HttpOnly | 是 |
 | SameSite | `Lax` |
-| Secure | 请求为 HTTPS（含 `X-Forwarded-Proto: https`）时启用 |
+| Secure | 默认本地 HTTP 不启用；HTTPS 请求下自动启用 |
 | Max-Age | 7 天（`SESSION_TTL_SECONDS`） |
 
 - 登录成功后由 `secrets.token_urlsafe(32)` 生成不透明 token，保存在**服务进程内存**；服务重启后所有登录态失效。
@@ -185,7 +187,7 @@
 
 ## 约定与限制
 
-- 没有 CORS 中间件：前端与 API 必须同源部署。
+- 本项目面向本机单用户使用：前端与 API 同源，没有 CORS 中间件；不要直接把端口暴露到公网。
 - 登录态只在进程内存中，重启服务后需要重新登录。
 - 会话与注册账号是本地 JSON 文件，不支持多实例共享。
-- `/api/evaluate`、`/api/ask`、预设和户型图解析当前公开，会消耗模型额度；公网部署前建议改为登录后调用并限流。
+- `/api/evaluate`、`/api/ask`、预设和户型图解析当前公开，会消耗模型额度；仅建议在本机使用。

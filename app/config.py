@@ -63,7 +63,6 @@ class Config:
     vision_api_key: str | None
     vision_model: str
     auth_users: dict[str, dict[str, str]]
-    public_host: str
     log_level: str
     max_upload_bytes: int
 
@@ -113,7 +112,6 @@ def load_config() -> Config:
         vision_api_key=os.getenv("VISION_API_KEY") or None,
         vision_model=os.getenv("VISION_MODEL", "qwen-vl-plus"),
         auth_users=_read_auth_users(),
-        public_host=os.getenv("PUBLIC_HOST", "").strip().lower(),
         log_level=os.getenv("LOG_LEVEL", "INFO").strip().upper(),
         max_upload_bytes=max_upload_mb * 1024 * 1024,
     )

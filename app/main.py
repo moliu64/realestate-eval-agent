@@ -2,13 +2,16 @@
 
 The web layer is split into small routers (``app.api``) and framework-agnostic
 services (``app.services``). This module only wires them together and applies
-the cross-cutting HTTP policy: security headers, HTTPS redirect and caching.
+the cross-cutting HTTP policy: security headers and local static caching.
+
+The application is designed for local use only (``127.0.0.1``); there is no
+domain, tunnel or reverse-proxy specific behavior.
 """
 
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
@@ -51,11 +54,6 @@ def create_app() -> FastAPI:
 
     @application.middleware("http")
     async def security_headers(request: Request, call_next):
-        forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme).lower()
-        request_host = request.headers.get("host", "").split(":", 1)[0].lower()
-        if config.public_host and request_host == config.public_host and forwarded_proto == "http":
-            return RedirectResponse(str(request.url.replace(scheme="https")), status_code=308)
-
         response = await call_next(request)
         if request.url.path in _HTML_PATHS:
             response.headers["Cache-Control"] = _HTML_CACHE
@@ -67,16 +65,13 @@ def create_app() -> FastAPI:
 
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; "
-            "script-src 'self' https://static.cloudflareinsights.com; "
-            "connect-src 'self' https://cloudflareinsights.com; font-src 'self'; object-src 'none'; "
+            "script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; "
             "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "same-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        if forwarded_proto == "https":
-            response.headers["Strict-Transport-Security"] = "max-age=31536000"
         return response
 
     @application.get("/", include_in_schema=False)

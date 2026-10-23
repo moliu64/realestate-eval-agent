@@ -19,12 +19,11 @@
 需求理解 → 方法规划 → 知识检索（RAG） → 确定性计算（Tool Calling） → 交叉校核 → 结构化报告
 ```
 
-- **不确定的部分交给 LLM**：理解自然语言需求、规划估价方法、组织说明文字。
-- **确定的部分交给工具**：市场比较法、收益法、成本法均由 Python 函数计算，金额与公式可逐项复核。
+- **不确定的部分交给 LLM，确定的部分交给工具**：LLM 理解自然语言需求、规划估价方法、组织说明文字；市场比较法、收益法、成本法均由 Python 函数计算，金额与公式可逐项复核。
 - **依据可追溯**：检索结果强制带 `[来源: 文件名]`，报告同时输出 Markdown 与结构化 JSON。
 - **流程可观察**：Web 端展示执行步骤时间线，命令行可一键复现同一条工作流。
 
-> 公网演示地址 `https://060115.top` 按需启用（`start_online.bat` + Cloudflare Tunnel）；默认以本地运行作为开发与验证方式。武汉区域年份预设为演示口径，**不替代正式估价报告**。
+> **本项目为纯本地运行项目**：Web 服务、知识库、会话与向量索引都在本机，监听 `127.0.0.1:8000`，不需要域名、隧道或公网部署；模型调用只发往你在 `.env` 中配置的 API 端点。武汉区域年份预设为演示口径，**不替代正式估价报告**。
 
 ## 核心能力
 
@@ -38,13 +37,15 @@
 | 户型图视觉解析 | 上传 png/jpg，视觉模型提取室厅、朝向、面积标注并写入当前会话 |
 | 知识库管理 | 管理员上传/预览/删除 md、txt、csv、pdf、docx 与图片，同步重建向量库，失败回滚 |
 | 双格式报告与步骤 | Markdown 报告 + `ReportSchema` JSON + 需求理解/规划/检索/计算/校核步骤时间线 |
-| 响应式 Web UI 与公网发布 | FastAPI 同源提供静态页面，无独立前端与 CORS；`start_online.bat` 可选 Cloudflare Tunnel 公网发布 |
+| 一键本地启动面板 | Tkinter 桌面面板：启动/停止服务、打开工作台、重建索引、环境自检、实时日志与状态卡片 |
+| 响应式 Web UI | FastAPI 同源提供静态页面，无独立前端与 CORS；桌面 / 平板 / 手机自适应 |
 
 ## 系统架构
 
 ```mermaid
 flowchart LR
     U["浏览器 / CLI<br/>run.py"] --> A["FastAPI<br/>app/main.py"]
+    P["本地启动面板<br/>launcher.py"] --> A
     A --> R["HTTP 路由层 app/api<br/>auth · sessions · valuation · admin · system"]
     R --> S["领域服务层 app/services<br/>auth_store · session_store · workflow_service · knowledge_service"]
     S --> W["LangGraph 工作流<br/>understand → plan → retrieve<br/>→ compute → verify → report"]
@@ -58,20 +59,21 @@ flowchart LR
 
 | 层次 | 技术 |
 | --- | --- |
-| 运行时 | Python 3.11+ |
+| 运行时 | Python 3.11+（标准库 Tkinter 提供启动面板） |
 | Web | FastAPI、Uvicorn、Pydantic |
 | 工作流 | LangGraph（状态图 + 条件路由） |
 | LLM | LangChain、OpenAI 兼容 Chat API（DeepSeek / Qwen / GLM / OpenAI） |
 | 检索 | Chroma、sentence-transformers、BGE Embedding |
 | 视觉 | OpenAI 兼容 Vision API（默认 Qwen-VL 端点，可替换） |
-| 前端 | 原生 HTML / CSS / JavaScript |
-| 测试与部署 | unittest、TestClient、GitHub Actions、可选 Cloudflare Tunnel |
+| 前端与运行 | 原生 HTML / CSS / JavaScript；Tkinter 本地启动面板 |
+| 测试 | unittest、TestClient、GitHub Actions |
 
 **分层边界**
 
 | 层次 | 目录 | 职责 |
 | --- | --- | --- |
-| 应用装配 | `app/main.py` | 应用工厂、路由注册、`ServiceError` 异常映射、安全响应头 / HTTPS 跳转 / 缓存中间件 |
+| 本地启动 | `launcher.py`、`start_panel.bat` | Tkinter 一键面板：管理本地服务进程、打开工作台、重建索引、环境自检、实时日志 |
+| 应用装配 | `app/main.py` | 应用工厂、路由注册、`ServiceError` 异常映射、本地安全响应头 / 静态缓存中间件 |
 | HTTP 层 | `app/api/` | 参数校验、Cookie 认证依赖、状态码；不写业务逻辑 |
 | 服务层 | `app/services/` | 认证、会话、工作流编排、知识库操作；不依赖 FastAPI，抛领域异常 |
 | 工作流 | `app/workflow/` | LangGraph 状态机：需求理解、方法规划、检索、计算、校核、报告 |
@@ -79,6 +81,9 @@ flowchart LR
 | 前端 | `app/web/static/` | 原生页面与脚本，同源调用 `/api/*` |
 
 ## 界面预览
+**本地启动面板**（双击 `start_panel.bat`，或运行 `python run.py panel`）
+
+![本地启动面板](docs/screenshots/launcher.png)
 
 | 登录页 | 工作台 |
 | :---: | :---: |
@@ -90,10 +95,7 @@ flowchart LR
 
 ## 快速开始
 
-### 环境要求
-
-- Python 3.11 及以上（CI 使用 3.11）；一个 OpenAI 兼容文本模型端点（必需）
-- 可选：OpenAI 兼容视觉模型（户型图解析）、已缓存的 BGE Embedding 模型（向量检索）
+要求 Python 3.11+ 与一个 OpenAI 兼容文本模型端点；视觉模型与 BGE Embedding 模型按需配置。以下命令以 Windows PowerShell 为例。
 
 ### 1. 克隆并安装
 
@@ -148,10 +150,13 @@ python run.py index
 ### 4. 启动
 
 ```powershell
-python run.py web          # 默认 http://127.0.0.1:8000
+start_panel.bat            # 双击：打开本地启动面板
+python run.py panel        # 等价的面板入口
+python run.py web          # 直接启动 Web 工作台 http://127.0.0.1:8000
 python run.py web --reload # 开发模式，代码变更自动重载
-start_backend.bat          # Windows 一键启动（内部执行 python run.py web）
 ```
+
+面板会自动探测 `http://127.0.0.1:8000/api/health`，服务未启动时可一键启动并打开浏览器；关闭面板会停止由它启动的服务进程。启动后打开 <http://127.0.0.1:8000>。
 
 ## 配置说明
 
@@ -169,20 +174,16 @@ start_backend.bat          # Windows 一键启动（内部执行 python run.py w
 | `MIN_RELEVANCE_SCORE` | 否 | `0.5` | 低于该相似度的切片不进入回答 |
 | `VISION_BASE_URL` / `VISION_API_KEY` / `VISION_MODEL` | 否 | DashScope 端点 / 空 / `qwen-vl-plus` | 视觉模型；缺少密钥时户型图解析不可用 |
 | `AUTH_USERS_JSON` | 建议 | `{}` | 管理员等固定账号；注册用户另存 `AUTH_USERS_FILE` |
-| `APP_HOST` / `APP_PORT` | 否 | `127.0.0.1` / `8000` | 监听地址与端口 |
-| `PUBLIC_HOST` | 否 | 空 | 公网域名；命中时 HTTP 308 跳转 HTTPS 并下发 HSTS |
-| `LOG_LEVEL` | 否 | `INFO` | 日志级别 |
+| `APP_HOST` / `APP_PORT` / `LOG_LEVEL` | 否 | `127.0.0.1` / `8000` / `INFO` | 本地监听地址、端口与日志级别；保持 `127.0.0.1` 避免暴露 |
 | `MAX_UPLOAD_MB` | 否 | `20` | 知识文档与户型图上传上限（MB） |
 
 ## 使用方式
 
 ### Web 工作台
 
-1. **登录 / 注册**：管理员账号来自 `.env` 的 `AUTH_USERS_JSON`；普通用户可在登录页注册。
-2. **新建估价会话**：填写用途、面积、区位、房龄、朝向、楼层、装修、估价目的等固定参数。
+1. **登录 / 注册并新建估价会话**：管理员账号来自 `.env` 的 `AUTH_USERS_JSON`，普通用户可在登录页注册；新建会话后填写用途、面积、区位、房龄、朝向、楼层、装修、估价目的等固定参数。
 3. **载入武汉预设**：选择行政区与年份，自动填充可比单价、净收益、资本化率、土地价值、重置成本、折旧，可继续修改。
-4. **上传户型图**（可选）：解析结果写入会话，作为报告参考因素。
-5. **提交补充说明**：生成 Markdown 报告、执行步骤时间线与折叠 JSON。
+4. **上传户型图（可选）并提交补充说明**：解析结果写入会话；提交后生成 Markdown 报告、执行步骤时间线与折叠 JSON。
 6. **知识库提问**：会话底部直接检索知识库，回答带来源 chips 并入会话记录。
 7. **管理员入口**：`role=admin` 账号可从侧边栏进入 `/admin`，上传/预览/删除文档并重建向量库。
 
@@ -191,6 +192,8 @@ start_backend.bat          # Windows 一键启动（内部执行 python run.py w
 统一入口 `run.py`，默认子命令为 `web`。
 
 ```powershell
+python run.py panel        # 打开本地启动面板
+python run.py status       # 输出本地运行状态（JSON）
 python run.py eval "帮我评估一套100平方米二手住宅，有近期可比成交单价20000元/平方米"
 python run.py rag "收益法的资本化率怎么确定"      # 需先构建向量库
 python run.py agent "某商铺年度稳定净收益60万元，资本化率5%，估值多少"
@@ -205,21 +208,24 @@ python run.py --help
 realestate-eval-agent/
 ├── app/
 │   ├── main.py / server.py     # 应用工厂 + 兼容入口（from app.main import app）
+│   ├── local_runtime.py        # 本地状态读取（健康检查、文档数、向量数、collect_status）
 │   ├── config.py / llm.py / embeddings.py / vision.py / presets.py / logging_config.py
-│   ├── api/                    # HTTP 层：auth、sessions、valuation、admin、system、deps、models
+│   ├── api/                    # auth、sessions、valuation、admin、system、deps、models
 │   ├── services/               # auth_store、session_store、workflow_service、knowledge_service、errors
-│   ├── workflow/               # LangGraph 工作流：graph、nodes、state、schemas
+│   ├── workflow/               # graph、nodes、state、schemas
 │   ├── rag/                    # loader、splitter、vectorstore、retriever、chain
-│   ├── tools/valuation.py      # 市场比较法 / 收益法 / 成本法确定性计算
-│   ├── agent/                  # Tool Calling Agent：graph、nodes、state
+│   ├── tools/valuation.py      # 市场比较法 / 收益法 / 成本法
+│   ├── agent/                  # Tool Calling Agent
 │   └── web/static/             # index.html、admin.html、app.js/admin.js/ui.js、styles.css
 ├── data/docs/                  # RAG 知识源：估价方法、武汉市场数据、规范、税费、业务知识
-├── docs/                       # 架构、API、部署、历史计划与评审、截图
-├── scripts/ · tests/           # 索引/Tunnel 脚本；unittest 测试与评估夹具
-├── run.py                      # 统一 CLI（web/index/eval/rag/agent/check）
-├── start_backend.bat           # Windows 本地一键启动
-├── start_online.bat            # Windows + Cloudflare Tunnel
-├── requirements.txt / requirements.lock / requirements-dev.txt
+├── docs/                       # 架构、API、历史计划与评审、界面截图
+├── scripts/indexing/           # 文档校验与向量库构建
+├── tests/                      # unittest 测试与评估夹具
+├── launcher.py                 # Tkinter 本地一键启动面板
+├── run.py                      # 统一 CLI（web/panel/status/index/eval/rag/agent/check）
+├── start_panel.bat             # 双击打开本地启动面板
+├── start_backend.bat           # Windows 直接启动 Web 服务
+├── requirements*.txt / requirements.lock
 └── .env.example                # 环境变量模板（不含真实凭证）
 ```
 
@@ -231,9 +237,8 @@ realestate-eval-agent/
 
 | 分组 | 方法与路径 | 认证 | 说明 |
 | --- | --- | --- | --- |
-| 系统 | `GET /api/health` | 公开 | 健康检查 |
-| 认证 | `POST /api/auth/login` / `register` | 公开 | 登录并下发 HttpOnly Cookie / 注册普通用户 |
-| 认证 | `POST /api/auth/logout`、`GET /api/auth/me` | 可选 | 注销 / 查询登录态 |
+| 系统 | `GET /api/health`、`/api/openapi.json` | 公开 | 健康检查 / OpenAPI schema |
+| 认证 | `/api/auth/login`、`/register`（公开）；`/logout`、`/me`（可选） | 公开 / 可选 | 登录、注册与注销；查询当前登录态 |
 | 会话 | `GET/POST /api/sessions` | 登录 | 会话列表 / 新建会话 |
 | 会话 | `GET/PATCH/DELETE /api/sessions/{id}` | 所有者 | 详情 / 更新参数 / 删除 |
 | 会话 | `POST /api/sessions/{id}/messages` | 所有者 | 提交估价消息并生成报告 |
@@ -243,8 +248,7 @@ realestate-eval-agent/
 | 估价 | `GET /api/presets/options`、`/api/presets/wuhan` | 公开 | 预设选项 / 武汉区域年份参数 |
 | 估价 | `POST /api/analyze-layout` | 公开 | 户型图视觉解析（上限 `MAX_UPLOAD_MB`） |
 | 管理 | `GET /admin`、`/admin/access` | 管理员 | 管理页面（非管理员 302 → `/`）/ 权限校验 |
-| 管理 | `POST /admin/preview`、`/admin/upload` | 管理员 | 切片预览 / 上传并重建索引 |
-| 管理 | `GET /admin/documents`、`GET/DELETE /admin/documents/{source}` | 管理员 | 文档列表 / 预览 / 删除 |
+| 管理 | `POST /admin/preview`、`/admin/upload`；`GET/DELETE /admin/documents/*` | 管理员 | 切片预览 / 上传并重建索引 / 文档列表、预览与删除 |
 
 ## 测试
 
@@ -253,63 +257,59 @@ pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-测试使用标准库 `unittest` 与 Starlette `TestClient`，不依赖额外测试框架，当前共 33 个用例，覆盖工具计算、切片、预设、工作流节点、HTTP 合同与检索质量。
+测试使用标准库 `unittest` 与 Starlette `TestClient`，不依赖额外测试框架，当前共 37 个用例，覆盖工具计算、切片、预设、工作流节点、HTTP 合同、检索质量与本地状态读取。CI（`.github/workflows/tests.yml`）安装 `requirements-dev.txt`，执行 `compileall`（含 `launcher.py`）、`node --check`（app.js / admin.js / ui.js）与 `python -m unittest discover -s tests -v`。
 
-- `tests/test_retriever.py`：未构建向量库、向量库为空或 Embedding 模型不可用时自动 `skip`。
+- `tests/test_local_runtime.py`：覆盖文档计数、向量计数、服务探测与本地 URL；`tests/test_retriever.py` 在未构建向量库、向量库为空或 Embedding 模型不可用时自动 `skip`。
 - `tests/test_agent.py`、`tests/test_workflow.py` 端到端用例：仅在 `RUN_LLM_TESTS=1` 时运行，需要真实 LLM。
 - `tests/test_api.py`：使用临时目录与 `TestClient`，不调用真实模型，可离线运行。
-- CI（`.github/workflows/tests.yml`）安装 `requirements-dev.txt`，执行 `compileall`、`node --check`（app.js / admin.js / ui.js）与 `python -m unittest discover -s tests -v`。
 
-## 部署
+## 本地启动与一键面板
 
-### 本地与 Windows 一键启动
+推荐双击 `start_panel.bat` 打开面板（使用 `.venv\Scripts\pythonw.exe`，不弹控制台）。面板功能：
+
+- **启动 / 停止服务**：调用 `python run.py web`，轮询 `/api/health` 确认就绪，停止时结束整个进程树。
+- **打开工作台**：服务未启动时先启动，就绪后自动打开浏览器。
+- **重建索引 / 环境自检**：流式显示 `run.py index`、`run.py check` 输出。
+- **实时日志与状态卡片**：滚动展示服务日志（最近 600 行），每 2 秒刷新本地服务、访问地址、向量索引与知识文档数量。
+- **快捷入口**：打开项目说明（README）与项目目录。
+
+面板只管理**由它自己启动**的服务进程：如果服务已在运行（例如手动 `python run.py web`），面板会提示且不会接管或停止它；关闭面板时若其启动的服务仍在运行，会弹窗确认并停止，服务不会在后台残留。
 
 ```powershell
-python run.py web            # 默认 127.0.0.1:8000，修改 .env 后需重启
-start_backend.bat            # Windows 一键启动，使用 .venv 解释器
-.\start_online.bat           # Windows + Cloudflare Tunnel（按需启用）
+start_panel.bat            # 双击打开本地启动面板
+python launcher.py         # 直接运行面板脚本
+python run.py panel        # 通过统一 CLI 打开面板
+python run.py web          # 直接启动 Web 服务，默认 http://127.0.0.1:8000
+python run.py web --reload # 开发模式
+python run.py status       # 输出 JSON 运行状态（服务、模型、文档数、向量数等）
 ```
 
-`start_online.bat` 会检查 `.venv`、`cloudflared` 与 Tunnel 配置，按需启动后端和隧道，期望公网地址 `https://060115.top`。拓扑、凭证位置、自动任务与运维检查见 [docs/deployment/CLOUDFLARE.md](docs/deployment/CLOUDFLARE.md)。
-
-公网部署建议设置 `APP_HOST=127.0.0.1`、`PUBLIC_HOST=your-domain.example`；命中 `PUBLIC_HOST` 的 HTTP 请求会 308 跳转 HTTPS 并下发 HSTS。
-
-### 生产注意事项
-
-- 单个 Uvicorn 进程：内存登录态与进程内会话锁不支持多 worker / 多实例，扩容前先改造认证与存储。
-- 反代或 Tunnel 之后不要直接暴露 Uvicorn 端口；配置 `PUBLIC_HOST`、TLS 与安全响应头。
-- 为公网入口增加限流（Cloudflare / 反向代理）、访问审计与模型额度告警。
-- 定期备份 `data/docs/`、`data/sessions/`、`data/auth_users.json`，并保护文件权限。
+修改 `.env` 或代码后需要重启服务；本地服务与数据均保留在本机，不存在远程部署或同步，模型请求只会发送到 `.env` 配置的 API 端点。
 
 ## 安全与边界
 
-- **密钥**：只进 `.env`（已被忽略）；仓库与文档不包含真实 API Key、密码或本机路径。
-- **登录态**：Cookie `realestate_auth`，`HttpOnly` + `SameSite=Lax`，HTTPS 下自动 `Secure`，有效期 7 天；保存在**进程内存**，服务重启后失效。
+- **本地监听与单机边界**：默认只绑定 `127.0.0.1:8000`，不要改成 `0.0.0.0` 或把端口映射到公网；会话、注册账号、向量库都是本机文件，适合单用户 / 单实例演示；估价、视觉解析、RAG 会消耗所配置的模型额度，并把估价文本/检索上下文发送到对应 API 提供商，公开接口仅建议本机使用。如确需从其他设备访问，请自行增加 TLS、反向代理与限流，并自行承担风险。
+- **密钥与登录态**：密钥只进 `.env`（已被忽略），仓库与文档不包含真实 API Key、密码或本机路径；Cookie `realestate_auth` 为 `HttpOnly` + `SameSite=Lax`，有效期 7 天，登录态保存在**进程内存**，服务重启后失效。
 - **密码**：注册用户使用 PBKDF2-SHA256（260,000 轮）加盐哈希；`.env` 注入的管理员账号为明文比较，必须使用强密码并保护 `.env`。
 - **隔离**：会话按 `owner_id`（`user:<username>`）过滤与校验，访问他人会话返回 404，不泄露存在性。
 - **上传**：仅允许 md/txt/csv/pdf/docx/png/jpg/jpeg，大小受 `MAX_UPLOAD_MB`（默认 20MB）限制，文件名做路径穿越校验，重建失败回滚。
-- **存储**：JSON 文件 + 本地 Chroma，适合单实例演示，不适合多实例、高并发或长期生产。
-- **公开接口**：`/api/evaluate`、`/api/ask`、预设与户型图解析当前无需登录、会消耗模型额度；对外服务前建议改为登录后调用并限流，并完成 HTTPS、审计、备份与默认账号改密。
 - **业务责任**：武汉预设数据是演示与流程验证口径，不能替代现场查勘、可比案例调查、宗地定位与正式估价报告。
 
 ## 路线图
 
 - [ ] **持久化与多用户**：用户、会话、审计迁移到 SQLite/PostgreSQL，支持多 worker 与并发写入。
-- [ ] **限流与审计**：按 IP / 账号限流，记录登录、估价、知识库变更的结构化审计日志。
-- [ ] **评估集与检索指标**：沉淀估价与检索回归集，跟踪 Recall@K、MRR、数值命中率与模型版本差异。
-- [ ] **更多城市与报告模板**：扩展城市数据源，支持报告模板化导出 PDF / DOCX。
-- [ ] **容器化部署**：提供 Dockerfile / Compose、健康检查与一键部署说明。
+- [ ] **本地安装包与面板设置**：Windows 安装包 / 托盘常驻与开机自启；面板内编辑端口、模型与路径配置并查看历史运行记录。
+- [ ] **评估集、更多城市与报告模板**：沉淀估价与检索回归集，跟踪 Recall@K、MRR、数值命中率与模型版本差异；扩展城市数据源，支持报告模板化导出 PDF / DOCX。
 
 ## 文档
 
 - [架构说明](docs/ARCHITECTURE.md)
 - [API 接口](docs/API_ENDPOINTS.md)
-- [部署：Cloudflare Tunnel](docs/deployment/CLOUDFLARE.md)
 - [文档索引与历史记录](docs/README.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
 
-`docs/plans/` 与 `docs/reviews/` 为历史决策记录，其中提到的旧入口和旧配置可能已过时，当前实现以本 README 与源码为准。
+本地启动说明以本 README「快速开始 / 本地启动与一键面板」与 [`launcher.py`](launcher.py) 为准；`docs/plans/` 与 `docs/reviews/` 为历史决策记录，其中提到的旧入口和旧配置可能已过时。
 
 ## 贡献
 
