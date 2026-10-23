@@ -1,59 +1,144 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#eef2f1" />
-    <title>知识库管理</title>
-    <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/static/styles.css?v=20260817-admin-entry1" />
-  </head>
-  <body>
-    <main class="shell">
-      <section class="panel admin-shell">
-        <header class="panel-header admin-header">
-          <div><p class="eyebrow">Knowledge Operations</p><h1>知识库管理</h1></div>
-          <a class="secondary-action admin-back" href="/">返回估值</a>
-        </header>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b343a" />
+  <meta name="color-scheme" content="light" />
+  <title>知识库管理 · RealEstate Eval Agent</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="/static/styles.css?v=20261023-glass2" />
+</head>
+<body>
+  <div class="ambient" aria-hidden="true">
+    <span class="blob blob-teal"></span>
+    <span class="blob blob-gold"></span>
+    <span class="blob blob-copper"></span>
+  </div>
 
-        <section class="admin-auth" aria-labelledby="auth-heading">
-          <div><strong id="auth-heading">管理凭证</strong><small>凭证仅保存在当前浏览器会话</small></div>
-          <div class="admin-auth-row">
-            <input id="token" type="password" placeholder="X-Admin-Token" autocomplete="off" />
-            <button id="load-documents" class="secondary-action" type="button">连接知识库</button>
-          </div>
-        </section>
-
-        <div class="admin-workspace">
-          <section class="admin-upload" aria-labelledby="upload-heading">
-            <div class="section-heading"><div><span id="upload-heading">新增或更新文档</span><small>同名文档将安全覆盖并重建索引</small></div></div>
-            <form id="admin-form" class="admin-form">
-              <label><span>大类</span><select id="category" required><option>市场数据</option><option>估价方法</option><option>政策法规</option><option>估价规范</option><option>业务知识</option><option selected>用户资料</option></select></label>
-              <label><span>中文标题</span><input id="document-title" type="text" maxlength="80" placeholder="例如：武汉2024年市场月报" required /></label>
-              <label><span>文档文件</span><input id="file" type="file" accept=".md,.txt,.csv,.pdf,.docx,.png,.jpg,.jpeg" required /></label>
-              <p class="admin-format-note">支持 Markdown、TXT、CSV、PDF、Word DOCX、PNG/JPG；单文件最大 20MB。</p>
-              <div class="admin-actions">
-                <button id="preview-upload" class="secondary-action" type="button">预览切分</button>
-                <button id="upload-document" class="submit" type="submit">确认入库</button>
-              </div>
-            </form>
-          </section>
-
-          <section class="admin-preview" aria-labelledby="preview-heading">
-            <div class="section-heading"><div><span id="preview-heading">切分预览</span><small>相邻片段保留 10% 重叠</small></div><span id="preview-meta" class="admin-meta"></span></div>
-            <div id="chunk-preview" class="chunk-preview empty">选择文件后先预览切分结果。</div>
-          </section>
+  <main class="admin-shell">
+    <header class="admin-header glass-card">
+      <div class="admin-brand">
+        <span class="brand-mark" aria-hidden="true">知</span>
+        <div>
+          <p class="eyebrow">Knowledge Operations</p>
+          <h1>知识库管理</h1>
         </div>
+      </div>
+      <div class="admin-header-right">
+        <span id="admin-account" class="admin-account" hidden>
+          <span class="dot" aria-hidden="true"></span>
+          <span id="admin-account-name">管理员</span>
+          <small>已授权</small>
+        </span>
+        <a class="button button-secondary admin-back" href="/">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+          <span>返回估值工作台</span>
+        </a>
+      </div>
+    </header>
 
-        <div id="admin-status" class="admin-status" aria-live="polite">等待连接知识库。</div>
+    <section id="admin-gate" class="admin-gate glass-card" hidden aria-labelledby="admin-gate-title">
+      <span class="empty-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      </span>
+      <h2 id="admin-gate-title">无管理员权限</h2>
+      <p id="admin-gate-copy">当前账号不是管理员，或登录状态已失效。请使用管理员账号登录后重试。</p>
+      <div class="admin-gate-actions">
+        <a class="button button-primary" href="/">前往登录并返回估值</a>
+        <button id="admin-retry" class="button button-ghost" type="button">重新校验</button>
+      </div>
+    </section>
 
-        <section class="admin-library" aria-labelledby="library-heading">
-          <div class="section-heading"><div><span id="library-heading">已入库文档</span><small>按中文大类组织，操作后自动重建向量库</small></div><span id="document-count" class="admin-meta"></span></div>
-          <div id="documents" class="document-list empty">输入管理凭证后加载。</div>
+    <div id="admin-content" class="admin-content">
+      <div id="admin-status" class="admin-status glass-inset" role="status" aria-live="polite">
+        <span id="admin-status-dot" class="dot" aria-hidden="true"></span>
+        <span id="admin-status-text">正在校验管理员权限…</span>
+      </div>
+
+      <div class="admin-workspace">
+        <section class="admin-card glass-card admin-upload" aria-labelledby="upload-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Ingest</p>
+              <h2 id="upload-heading">新增或更新文档</h2>
+              <small>同名文档将安全覆盖并重建索引</small>
+            </div>
+          </div>
+          <form id="admin-form" class="admin-form">
+            <label class="field">
+              <span>文档大类</span>
+              <select id="category" required>
+                <option>市场数据</option>
+                <option>估价方法</option>
+                <option>政策法规</option>
+                <option>估价规范</option>
+                <option>业务知识</option>
+                <option selected>用户资料</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>中文标题</span>
+              <input id="document-title" type="text" maxlength="80" placeholder="例如：武汉2024年市场月报" required />
+            </label>
+            <label class="field">
+              <span>文档文件</span>
+              <input id="file" type="file" accept=".md,.txt,.csv,.pdf,.docx,.png,.jpg,.jpeg" required />
+            </label>
+            <p class="admin-format-note">支持 Markdown、TXT、CSV、PDF、Word DOCX、PNG/JPG；单文件最大 20MB。</p>
+            <div class="admin-actions">
+              <button id="preview-upload" class="button button-secondary" type="button">
+                <span>预览切分</span><span class="spinner" aria-hidden="true"></span>
+              </button>
+              <button id="upload-document" class="button button-primary" type="submit">
+                <span>确认入库</span><span class="spinner" aria-hidden="true"></span>
+              </button>
+            </div>
+          </form>
         </section>
+
+        <section class="admin-card glass-card admin-preview" aria-labelledby="preview-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Chunk Preview</p>
+              <h2 id="preview-heading">切分预览</h2>
+              <small>相邻片段保留 10% 重叠</small>
+            </div>
+            <span id="preview-meta" class="admin-meta"></span>
+          </div>
+          <div id="chunk-preview" class="chunk-preview empty">选择文件后先预览切分结果。</div>
+        </section>
+      </div>
+
+      <section class="admin-card glass-card admin-library" aria-labelledby="library-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Library</p>
+            <h2 id="library-heading">已入库文档</h2>
+            <small>按中文大类组织，操作后自动重建向量库</small>
+          </div>
+          <span id="document-count" class="admin-meta"></span>
+        </div>
+        <div id="documents" class="document-list empty">正在加载已入库文档…</div>
       </section>
-    </main>
-    <script src="/static/frontend-config.js?v=20260817-preset1"></script>
-    <script src="/static/admin.js?v=20260817-admin-entry1"></script>
-  </body>
+    </div>
+  </main>
+
+  <div id="toast-region" class="toast-region" role="status" aria-live="polite" aria-atomic="false"></div>
+
+  <div id="confirm-dialog" class="dialog-backdrop" hidden>
+    <div class="dialog glass-card" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-copy">
+      <p class="eyebrow">请确认操作</p>
+      <h2 id="confirm-title">删除文档</h2>
+      <p id="confirm-copy" class="dialog-copy"></p>
+      <div class="dialog-actions">
+        <button id="confirm-cancel" class="button button-ghost" type="button">取消</button>
+        <button id="confirm-ok" class="button button-danger" type="button">确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/ui.js?v=20261023-glass2"></script>
+  <script src="/static/admin.js?v=20261023-glass2"></script>
+</body>
 </html>

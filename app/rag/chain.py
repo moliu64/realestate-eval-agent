@@ -3,8 +3,10 @@ import time
 
 from app.config import load_config
 from app.llm import get_chat_model
+from app.logging_config import get_logger
 from app.rag.retriever import retrieve
 
+logger = get_logger(__name__)
 
 SYSTEM_PROMPT = (
     "你是一名资深房地产估价师。只能依据给定上下文回答问题；"
@@ -35,10 +37,9 @@ def _fallback_answer(question: str, results: list) -> str:
 
 def answer(question: str) -> str:
     started = time.perf_counter()
-    print("[rag] retrieve started", flush=True)
     config = load_config()
     results = retrieve(question, k=config.retrieval_top_k)
-    print(f"[rag] retrieve finished in {time.perf_counter() - started:.2f}s", flush=True)
+    logger.info("retrieved %d chunks in %.2fs", len(results), time.perf_counter() - started)
     relevant_results = [
         (doc, score) for doc, score in results if score >= config.min_relevance_score
     ]
@@ -54,9 +55,8 @@ def answer(question: str) -> str:
             raise
         return _fallback_answer(question, relevant_results)
 
-    print("[rag] llm started", flush=True)
     response = chat_model.invoke(
         [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_prompt)]
     )
-    print(f"[rag] llm finished in {time.perf_counter() - started:.2f}s", flush=True)
+    logger.info("RAG answer generated in %.2fs", time.perf_counter() - started)
     return str(response.content).strip()

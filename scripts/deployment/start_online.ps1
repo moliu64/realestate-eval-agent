@@ -17,7 +17,7 @@ if (-not (Test-Path -LiteralPath $tunnelConfig)) {
 
 $backend = Get-NetTCPConnection -State Listen -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $backend) {
-    Start-Process -FilePath $python -ArgumentList "run_backend.py" -WorkingDirectory $projectRoot -WindowStyle Hidden
+    Start-Process -FilePath $python -ArgumentList "run.py web" -WorkingDirectory $projectRoot -WindowStyle Hidden
     $deadline = (Get-Date).AddSeconds(30)
     do {
         Start-Sleep -Seconds 1

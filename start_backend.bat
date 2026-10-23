@@ -6,6 +6,6 @@ if not exist ".venv\Scripts\python.exe" (
   pause
   exit /b 1
 )
-echo Starting backend at http://127.0.0.1:8000
-".venv\Scripts\python.exe" run_backend.py
+echo Starting RealEstate Eval Agent at http://127.0.0.1:8000
+".venv\Scripts\python.exe" run.py web
 pause

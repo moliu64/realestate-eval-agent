@@ -9,16 +9,23 @@ permissions:
   contents: read
 
 jobs:
-  unit-tests:
+  tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install lightweight test dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Byte-compile Python sources
+        run: python -m compileall -q app run.py tests scripts
+      - name: Check frontend syntax
+        run: |
+          node --check app/web/static/app.js
+          node --check app/web/static/admin.js
+          node --check app/web/static/ui.js
       - name: Run deterministic tests
-        run: python -m unittest tests.test_tools tests.test_workflow
+        run: python -m unittest discover -s tests -v

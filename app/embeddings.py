@@ -1,17 +1,21 @@
 from functools import lru_cache
 import os
 
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-
 from langchain_core.embeddings import Embeddings
-from sentence_transformers import SentenceTransformer
 
 from app.config import load_config
 
 
 class LocalBgeEmbeddings(Embeddings):
+    """Sentence-transformers BGE embedding model loaded lazily from local cache."""
+
     def __init__(self, model_name: str) -> None:
+        # Force offline loading: the model is expected to be cached locally.
+        # Set HF_HUB_OFFLINE=0 explicitly if the first download is needed.
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+        from sentence_transformers import SentenceTransformer
+
         self.model = SentenceTransformer(model_name)
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
